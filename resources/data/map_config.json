@@ -1,0 +1,47 @@
+{
+  "map_size": {
+    "width": 20,
+    "height": 20
+  },
+  "hex_size": 1.5,
+  "spawn_points": [
+    {
+      "player_id": 0,
+      "hex_coord": {"q": 5, "r": 5},
+      "deploy_positions": [
+        {"q": 4, "r": 5},
+        {"q": 5, "r": 4},
+        {"q": 6, "r": 4}
+      ]
+    },
+    {
+      "player_id": 1,
+      "hex_coord": {"q": 15, "r": 15},
+      "deploy_positions": [
+        {"q": 14, "r": 15},
+        {"q": 15, "r": 14},
+        {"q": 16, "r": 14}
+      ]
+    }
+  ],
+  "bounty_zone": {
+    "center": {"q": 10, "r": 10},
+    "radius": 1,
+    "tiles": [
+      {"q": 9, "r": 10},
+      {"q": 10, "r": 9},
+      {"q": 10, "r": 10},
+      {"q": 10, "r": 11},
+      {"q": 11, "r": 9},
+      {"q": 11, "r": 10},
+      {"q": 11, "r": 11}
+    ]
+  },
+  "contest_points": [
+    {
+      "id": 0,
+      "hex_coord": {"q": 10, "r": 10},
+      "description": "玩家1-玩家2之间的争夺点"
+    }
+  ]
+}

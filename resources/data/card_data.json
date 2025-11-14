@@ -1,0 +1,105 @@
+{
+  "cards": [
+    {
+      "id": "C01",
+      "name": "火焰冲击",
+      "attributes": ["fire"],
+      "energy_cost": 1,
+      "type": "attack",
+      "effect": "对目标精灵造成3点伤害，若目标处于森林地形，额外造成1点伤害",
+      "target_type": "enemy_sprite",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C02",
+      "name": "风刃",
+      "attributes": ["wind"],
+      "energy_cost": 1,
+      "type": "attack",
+      "effect": "对直线2格内目标精灵造成2点伤害，无视中间1格地形",
+      "target_type": "enemy_sprite",
+      "range_requirement": "line_2_tiles"
+    },
+    {
+      "id": "C03",
+      "name": "水流召唤",
+      "attributes": ["water"],
+      "energy_cost": 1,
+      "type": "terrain",
+      "effect": "在自身精灵相邻1格创建1格水流地形，持续3回合",
+      "target_type": "adjacent_tile",
+      "range_requirement": "adjacent"
+    },
+    {
+      "id": "C04",
+      "name": "岩击",
+      "attributes": ["rock"],
+      "energy_cost": 1,
+      "type": "attack",
+      "effect": "对目标精灵造成2点伤害，若目标处于岩石地形，伤害+1",
+      "target_type": "enemy_sprite",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C05",
+      "name": "风火斩",
+      "attributes": ["wind", "fire"],
+      "energy_cost": 2,
+      "type": "attack",
+      "effect": "对目标精灵及相邻1格精灵造成2点伤害",
+      "target_type": "enemy_sprite",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C06",
+      "name": "水火共鸣",
+      "attributes": ["water", "fire"],
+      "energy_cost": 3,
+      "type": "support",
+      "effect": "自身水、火属性精灵各恢复2点血量，同时对周围1格敌方精灵造成1点伤害",
+      "target_type": "self",
+      "range_requirement": "none"
+    },
+    {
+      "id": "C07",
+      "name": "火岩爆",
+      "attributes": ["fire", "rock"],
+      "energy_cost": 2,
+      "type": "attack",
+      "effect": "对目标精灵造成3点伤害，同时将目标所在地形降低1级（最低1级）",
+      "target_type": "enemy_sprite",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C08",
+      "name": "风水流",
+      "attributes": ["wind", "water"],
+      "energy_cost": 2,
+      "type": "terrain",
+      "effect": "在指定3格范围内创建1格水流地形（需与自身精灵相邻），持续3回合",
+      "target_type": "adjacent_tile",
+      "range_requirement": "adjacent_3_tiles"
+    },
+    {
+      "id": "C09",
+      "name": "风岩斩",
+      "attributes": ["wind", "rock"],
+      "energy_cost": 2,
+      "type": "attack",
+      "effect": "对目标精灵及相邻1格精灵造成2点伤害，同时将目标所在地形降低1级（最低1级）",
+      "target_type": "enemy_sprite",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C10",
+      "name": "水岩壁",
+      "attributes": ["water", "rock"],
+      "energy_cost": 2,
+      "type": "terrain",
+      "effect": "在自身精灵相邻1格创建1格3级岩石地形，持续2回合",
+      "target_type": "adjacent_tile",
+      "range_requirement": "adjacent"
+    }
+  ]
+}
+

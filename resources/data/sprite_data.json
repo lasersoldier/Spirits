@@ -1,0 +1,53 @@
+{
+  "sprites": [
+    {
+      "id": "F01",
+      "name": "赤焰崽",
+      "attribute": "fire",
+      "base_hp": 8,
+      "base_movement": 2,
+      "vision_range": 2,
+      "attack_range": 1,
+      "attack_height_limit": "same_or_high_to_low",
+      "special_mechanisms": [],
+      "model_path": "res://models/sprites/F01_赤焰崽.glb"
+    },
+    {
+      "id": "W01",
+      "name": "风羽雀",
+      "attribute": "wind",
+      "base_hp": 6,
+      "base_movement": 3,
+      "vision_range": 4,
+      "attack_range": 2,
+      "attack_height_limit": "none",
+      "special_mechanisms": ["flight"],
+      "model_path": "res://models/sprites/W01_风羽雀.glb"
+    },
+    {
+      "id": "S01",
+      "name": "水滴滴",
+      "attribute": "water",
+      "base_hp": 7,
+      "base_movement": 2,
+      "vision_range": 2,
+      "attack_range": 2,
+      "attack_height_limit": "same_or_low_to_high",
+      "special_mechanisms": [],
+      "model_path": "res://models/sprites/S01_水滴滴.glb"
+    },
+    {
+      "id": "R01",
+      "name": "石疙瘩",
+      "attribute": "rock",
+      "base_hp": 11,
+      "base_movement": 1,
+      "vision_range": 2,
+      "attack_range": 1,
+      "attack_height_limit": "none",
+      "special_mechanisms": ["terrain_modify"],
+      "model_path": "res://models/sprites/R01_石疙瘩.glb"
+    }
+  ]
+}
+
