@@ -6,6 +6,7 @@ extends Node
 var game_map: GameMap
 var camera: Camera3D
 var sub_viewport: SubViewport
+var container: SubViewportContainer  # 缓存容器引用，避免重复获取
 
 signal hex_clicked(hex_coord: Vector2i)
 
@@ -13,250 +14,109 @@ func _init(map: GameMap, cam: Camera3D, viewport: SubViewport):
 	game_map = map
 	camera = cam
 	sub_viewport = viewport
+	# 初始化时获取容器引用（假设SubViewport的父节点一定是SubViewportContainer）
+	container = sub_viewport.get_parent() as SubViewportContainer
 
 func _ready():
-	# 设置处理输入
 	set_process_input(true)
+	# 监听视口大小变化，分辨率改变时触发重新计算
+	get_viewport().connect("size_changed", _on_viewport_resized)
+
+func _on_viewport_resized():
+	# 可选：分辨率变化时可添加调试信息或强制刷新逻辑
+	print("屏幕分辨率变化: ", get_viewport().size)
 
 func _input(event: InputEvent):
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		# 使用 SubViewport 的输入系统
-		if sub_viewport:
-			# 获取鼠标在 SubViewport 中的位置
-			var viewport_pos = _get_mouse_pos_in_viewport()
-			# 检查是否在视口范围内（包括边界）
+		if sub_viewport and container:
+			var main_viewport = get_viewport()
+			var global_mouse = main_viewport.get_mouse_position()
+			# 直接通过统一的坐标转换逻辑处理，不再区分是否在视口内（后续逻辑会判断）
+			var viewport_pos = _convert_global_to_viewport_pos(global_mouse)
+			# 检查是否为有效坐标（无效坐标返回 Vector2(-1, -1)）
 			if viewport_pos.x >= 0 and viewport_pos.y >= 0:
-				var viewport_size = Vector2(sub_viewport.size)
-				if viewport_pos.x <= viewport_size.x and viewport_pos.y <= viewport_size.y:
-					_handle_click_in_viewport(viewport_pos)
-					return
-		
-		# 回退到原来的方法（如果不在 SubViewport 范围内）
-		var global_mouse_pos = get_viewport().get_mouse_position()
-		_handle_click(global_mouse_pos)
+				_handle_click_in_viewport(viewport_pos)
 
-# 尝试使用 SubViewport 的输入系统直接处理
-func _unhandled_input(_event: InputEvent):
-	# 如果 SubViewport 的 handle_input_locally = false，输入事件会传递到这里
-	# 我们可以尝试在这里处理
-	pass
-
-# 获取鼠标在 SubViewport 中的位置
-func _get_mouse_pos_in_viewport() -> Vector2:
-	if not sub_viewport:
-		return Vector2.ZERO
+# 核心优化：统一全局坐标到SubViewport坐标的转换逻辑
+func _convert_global_to_viewport_pos(global_mouse: Vector2) -> Vector2:
+	if not container or not sub_viewport:
+		return Vector2(-1, -1)  # 返回无效坐标
 	
-	var container = sub_viewport.get_parent() as SubViewportContainer
-	if not container:
-		return Vector2.ZERO
-	
-	# 获取主视口的鼠标位置
-	var main_viewport = get_viewport()
-	var global_mouse = main_viewport.get_mouse_position()
-	
-	# 获取容器的全局矩形
+	# 获取容器的全局矩形（包含位置和大小）
 	var container_rect = container.get_global_rect()
+	# 检查鼠标是否在容器范围内（不在则返回无效）
 	if not container_rect.has_point(global_mouse):
-		return Vector2.ZERO
+		return Vector2(-1, -1)  # 返回无效坐标
 	
-	# 转换为容器局部坐标
-	var local_pos = global_mouse - container_rect.position
+	# 1. 转换为容器的局部坐标（相对于容器左上角）
+	var local_in_container = global_mouse - container_rect.position
 	
-	# 获取视口和容器大小
-	var viewport_size = Vector2(sub_viewport.size)
+	# 2. 获取容器和SubViewport的尺寸
 	var container_size = container_rect.size
+	var viewport_size = Vector2(sub_viewport.size)  # SubViewport的实际渲染尺寸（转换为Vector2）
 	
-	# 调试：输出容器信息
-	print("容器信息: 全局位置=", container_rect.position, " | 大小=", container_size, " | 视口大小=", viewport_size)
-	
-	# 计算视口坐标
-	var viewport_pos: Vector2
-	var offset_x: float = 0.0
-	var offset_y: float = 0.0
+	# 3. 处理缩放和偏移（关键适配逻辑）
+	var scale = Vector2(1, 1)
+	var offset = Vector2(0, 0)
 	
 	if container.stretch:
-		# 拉伸模式：保持宽高比
-		var scale = min(container_size.x / viewport_size.x, container_size.y / viewport_size.y)
-		var scaled_width = viewport_size.x * scale
-		var scaled_height = viewport_size.y * scale
-		offset_x = (container_size.x - scaled_width) / 2.0
-		offset_y = (container_size.y - scaled_height) / 2.0
-		viewport_pos.x = (local_pos.x - offset_x) / scale
-		viewport_pos.y = (local_pos.y - offset_y) / scale
+		# 拉伸模式：保持宽高比，计算缩放比例
+		# 注意：当 SubViewport 尺寸与容器同步时，viewport_size 应该等于 container_size
+		# 但如果启用了 stretch_aspect=KEEP，可能会有缩放和偏移
+		if viewport_size.x > 0 and viewport_size.y > 0:
+			var scale_x = container_size.x / viewport_size.x
+			var scale_y = container_size.y / viewport_size.y
+			# 取最小缩放比例（避免拉伸变形，Godot默认行为）
+			var min_scale = min(scale_x, scale_y)
+			scale = Vector2(min_scale, min_scale)
+			# 计算居中偏移（容器与缩放后视口的差距）
+			var scaled_viewport_size = viewport_size * scale
+			offset = (container_size - scaled_viewport_size) / 2
+		else:
+			# 如果视口尺寸无效，直接使用容器坐标
+			return local_in_container
 	else:
-		# 非拉伸模式：原始大小
-		# 当 stretch = false 时，SubViewport 以原始大小显示
-		# SubViewportContainer 的默认行为是：如果容器比视口大，视口会居中显示
-		# 如果容器比视口小，视口会被裁剪（从左上角开始）
-		if container_size.x >= viewport_size.x:
-			# 容器比视口宽，视口居中显示
-			offset_x = (container_size.x - viewport_size.x) / 2.0
-			viewport_pos.x = local_pos.x - offset_x
-		else:
-			# 容器比视口窄，视口被裁剪（从左上角开始）
-			# 将容器坐标映射到视口坐标
-			viewport_pos.x = (local_pos.x / container_size.x) * viewport_size.x
-		
-		if container_size.y >= viewport_size.y:
-			# 容器比视口高，视口居中显示
-			offset_y = (container_size.y - viewport_size.y) / 2.0
-			viewport_pos.y = local_pos.y - offset_y
-		else:
-			# 容器比视口矮，视口被裁剪（从左上角开始）
-			# 将容器坐标映射到视口坐标
-			viewport_pos.y = (local_pos.y / container_size.y) * viewport_size.y
+		# 非拉伸模式：SubViewport以原始尺寸显示，居中对齐
+		offset = (container_size - viewport_size) / 2
+		# 若容器小于视口，偏移为0（从左上角开始显示）
+		offset.x = max(0, offset.x)
+		offset.y = max(0, offset.y)
 	
-	# 限制在视口范围内
-	viewport_pos.x = clamp(viewport_pos.x, 0, viewport_size.x)
-	viewport_pos.y = clamp(viewport_pos.y, 0, viewport_size.y)
+	# 4. 转换为SubViewport内部坐标（修正偏移并除以缩放）
+	var local_in_viewport = (local_in_container - offset) / scale
+	# 限制坐标在SubViewport范围内（避免越界）
+	local_in_viewport.x = clamp(local_in_viewport.x, 0, viewport_size.x)
+	local_in_viewport.y = clamp(local_in_viewport.y, 0, viewport_size.y)
 	
-	# 调试输出
-	print("坐标转换: 全局鼠标=", global_mouse, " | 容器局部=", local_pos, " | 视口坐标=", viewport_pos, " | 偏移=(", offset_x, ", ", offset_y, ")")
-	
-	return viewport_pos
+	return local_in_viewport
 
-# 直接在 SubViewport 坐标系统中处理点击
 func _handle_click_in_viewport(viewport_pos: Vector2):
-	if not camera or not game_map or not sub_viewport:
+	if not camera or not game_map:
 		return
 	
-	print("SubViewport坐标: ", viewport_pos)
-	
-	# 确保坐标在 SubViewport 范围内
-	var viewport_size = Vector2(sub_viewport.size)
-	viewport_pos.x = clamp(viewport_pos.x, 0, viewport_size.x)
-	viewport_pos.y = clamp(viewport_pos.y, 0, viewport_size.y)
-	
-	# 创建从摄像机发出的射线
-	# 重要：project_ray_origin 和 project_ray_normal 使用的是相对于摄像机所在 Viewport 的坐标
-	# 由于摄像机在 SubViewport 中，所以坐标应该是相对于 SubViewport 的
-	# 
-	# 但是，当 SubViewport 在容器中居中显示时，坐标系统可能不一致
-	# 我们需要确保传递给 project_ray_origin 的坐标是相对于 SubViewport 的
-	# 
-	# 尝试：确保坐标是相对于 SubViewport 的（0,0 到 viewport_size）
-	# 注意：viewport_pos 已经是相对于 SubViewport 的坐标了
+	# 生成射线（使用SubViewport坐标，与摄像机所在视口匹配）
 	var from = camera.project_ray_origin(viewport_pos)
 	var ray_dir = camera.project_ray_normal(viewport_pos)
 	
-	# 如果坐标系统不一致，可能需要调整
-	# 但是，由于摄像机在 SubViewport 中，project_ray_origin 应该使用 SubViewport 的坐标
-	# 所以这里应该没问题
-	
-	# 调试：输出视口大小和坐标，确保坐标系统一致
-	print("射线计算: 视口大小=", viewport_size, " | 坐标=", viewport_pos, " | 坐标比例=(", viewport_pos.x / viewport_size.x, ", ", viewport_pos.y / viewport_size.y, ")")
-	
-	print("射线起点: ", from, " | 射线方向: ", ray_dir)
-	
-	# 射线与Y=0平面相交（地图平面）
+	# 射线与地图平面（Y=0）相交计算
 	var plane_normal = Vector3(0, 1, 0)
 	var plane_point = Vector3(0, 0, 0)
-	
 	var denom = plane_normal.dot(ray_dir)
-	if abs(denom) < 0.0001:
-		print("警告: 射线与平面平行")
-		return  # 射线与平面平行
 	
+	if abs(denom) < 0.0001:
+		print("射线与地图平面平行")
+		return
 	var t = (plane_point - from).dot(plane_normal) / denom
 	if t < 0:
-		print("警告: 射线方向错误, t=", t)
-		return  # 射线方向错误
+		print("射线方向错误（指向摄像机后方）")
+		return
 	
+	# 计算交点并转换为六边形坐标
 	var world_pos = from + ray_dir * t
-	print("射线与地面交点: ", world_pos)
-	
-	# 将世界坐标转换为六边形坐标
 	var hex_coord = HexGrid.world_to_hex(world_pos, game_map.hex_size, game_map.map_height)
 	
-	# 检查坐标是否有效
 	if game_map._is_valid_hex(hex_coord):
-		print("点击了六边形坐标: ", hex_coord)
+		print("有效点击：", hex_coord)
 		hex_clicked.emit(hex_coord)
 	else:
-		print("无效的六边形坐标: ", hex_coord)
-
-func _handle_click(screen_pos: Vector2):
-	if not camera or not game_map or not sub_viewport:
-		return
-	
-	# 获取SubViewportContainer（父节点）
-	var container = sub_viewport.get_parent() as SubViewportContainer
-	if not container:
-		return
-	
-	# 使用get_global_rect()获取容器的全局矩形
-	var container_global_rect = container.get_global_rect()
-	
-	# 检查点击是否在容器内
-	if not container_global_rect.has_point(screen_pos):
-		return
-	
-	# 将全局屏幕坐标转换为容器内的局部坐标
-	var local_pos = screen_pos - container_global_rect.position
-	
-	# 获取SubViewport的固定尺寸和容器的实际尺寸
-	var viewport_size = Vector2(sub_viewport.size)  # 固定为 1920x1080
-	var container_size = container_global_rect.size
-	
-	# 当 stretch = false 时，SubViewport 以固定大小显示
-	# 计算 SubViewport 在容器中的实际显示区域
-	var viewport_pos: Vector2
-	
-	# 使用 SubViewportContainer 的 stretch_mode 来计算实际显示区域
-	# 当 stretch = false 时，SubViewport 会以原始大小显示，可能居中
-	# 计算缩放和偏移
-	var scale_factor: float = 1.0
-	var offset_x: float = 0.0
-	var offset_y: float = 0.0
-	
-	if container.stretch:
-		# stretch = true 时，会拉伸填充
-		scale_factor = min(container_size.x / viewport_size.x, container_size.y / viewport_size.y)
-		var scaled_width = viewport_size.x * scale_factor
-		var scaled_height = viewport_size.y * scale_factor
-		offset_x = (container_size.x - scaled_width) / 2.0
-		offset_y = (container_size.y - scaled_height) / 2.0
-		viewport_pos.x = (local_pos.x - offset_x) / scale_factor
-		viewport_pos.y = (local_pos.y - offset_y) / scale_factor
-	else:
-		# stretch = false 时，以原始大小显示，居中
-		offset_x = (container_size.x - viewport_size.x) / 2.0
-		offset_y = (container_size.y - viewport_size.y) / 2.0
-		viewport_pos.x = local_pos.x - offset_x
-		viewport_pos.y = local_pos.y - offset_y
-	
-	# 确保坐标在SubViewport范围内
-	viewport_pos.x = clamp(viewport_pos.x, 0, viewport_size.x)
-	viewport_pos.y = clamp(viewport_pos.y, 0, viewport_size.y)
-	
-	# 调试输出
-	print("屏幕坐标: ", screen_pos, " | 容器局部: ", local_pos, " | SubViewport坐标: ", viewport_pos, " | 容器大小: ", container_size, " | 视口大小: ", viewport_size, " | 偏移: (", offset_x, ", ", offset_y, ")")
-	
-	# 调试输出（可以注释掉）
-	# print("屏幕坐标: ", screen_pos, " | 容器局部: ", local_pos, " | SubViewport坐标: ", viewport_pos)
-	
-	# 创建从摄像机发出的射线
-	var from = camera.project_ray_origin(viewport_pos)
-	var ray_dir = camera.project_ray_normal(viewport_pos)
-	
-	# 射线与Y=0平面相交（地图平面）
-	var plane_normal = Vector3(0, 1, 0)
-	var plane_point = Vector3(0, 0, 0)
-	
-	var denom = plane_normal.dot(ray_dir)
-	if abs(denom) < 0.0001:
-		return  # 射线与平面平行
-	
-	var t = (plane_point - from).dot(plane_normal) / denom
-	if t < 0:
-		return  # 射线方向错误
-	
-	var world_pos = from + ray_dir * t
-	
-	# 将世界坐标转换为六边形坐标
-	var hex_coord = HexGrid.world_to_hex(world_pos, game_map.hex_size, game_map.map_height)
-	
-	# 检查坐标是否有效
-	if game_map._is_valid_hex(hex_coord):
-		print("点击了六边形坐标: ", hex_coord)
-		hex_clicked.emit(hex_coord)
+		print("无效坐标：", hex_coord)

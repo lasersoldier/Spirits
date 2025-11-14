@@ -27,7 +27,8 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-stretch = false
+stretch = true
+stretch_aspect = 1
 
 [node name="SubViewport" type="SubViewport" parent="UI/MapViewport"]
 handle_input_locally = false

@@ -69,6 +69,7 @@ func _ready():
 	await get_tree().process_frame
 	_setup_ui()
 	_setup_map_rendering()
+	_setup_viewport_adaptation()
 	# 自动开始游戏（或进入部署阶段）
 	await get_tree().process_frame
 	call_deferred("start_game")
@@ -435,3 +436,67 @@ func _setup_map_rendering():
 	sprite_deploy.sprite_deployed.connect(_on_sprite_deployed.bind(sprite_renderer))
 	
 	print("地图渲染设置完成，地形数量: ", game_map.terrain_tiles.size())
+
+# 设置视口适配
+func _setup_viewport_adaptation():
+	var container = get_node_or_null("UI/MapViewport") as SubViewportContainer
+	var sub_viewport = get_node_or_null("UI/MapViewport/SubViewport") as SubViewport
+	
+	if not container or not sub_viewport:
+		push_error("无法找到视口容器或SubViewport")
+		return
+	
+	# 当 stretch = true 时，SubViewport 的尺寸应该保持固定（如 1920x1080）
+	# 容器会自动缩放显示，不需要手动同步尺寸
+	# 监听主视口尺寸变化，用于调试或后续处理
+	var main_viewport = get_viewport()
+	if main_viewport and not main_viewport.size_changed.is_connected(_on_main_viewport_resized):
+		main_viewport.size_changed.connect(_on_main_viewport_resized)
+	
+	print("视口适配已设置 - SubViewport尺寸: ", sub_viewport.size, " 容器拉伸: ", container.stretch)
+
+# 处理主视口尺寸变化（用于调试）
+func _on_main_viewport_resized():
+	var container = get_node_or_null("UI/MapViewport") as SubViewportContainer
+	var sub_viewport = get_node_or_null("UI/MapViewport/SubViewport") as SubViewport
+	
+	if container and sub_viewport:
+		var container_rect = container.get_rect()
+		print("主视口尺寸变化 - 容器尺寸: ", container_rect.size, " SubViewport尺寸: ", sub_viewport.size)
+
+# 将全局鼠标坐标转换为SubViewport内部坐标
+func _get_viewport_local_pos(global_mouse_pos: Vector2) -> Vector2:
+	var container = get_node_or_null("UI/MapViewport") as SubViewportContainer
+	var sub_viewport = get_node_or_null("UI/MapViewport/SubViewport") as SubViewport
+	
+	if not container or not sub_viewport:
+		return Vector2.ZERO
+	
+	# 1. 将全局鼠标坐标转换为容器局部坐标
+	var container_rect = container.get_global_rect()
+	var local_in_container = global_mouse_pos - container_rect.position
+	
+	# 2. 计算容器到SubViewport的缩放比例（启用stretch_aspect=KEEP时，宽高比一致）
+	var container_size = container_rect.size
+	var viewport_size = Vector2(sub_viewport.size)
+	
+	if viewport_size.x == 0 or viewport_size.y == 0:
+		return Vector2.ZERO
+	
+	# 计算缩放比例（取宽高比的最小值，保持宽高比）
+	var scale_x = container_size.x / viewport_size.x
+	var scale_y = container_size.y / viewport_size.y
+	var scale = min(scale_x, scale_y)
+	
+	if scale == 0:
+		return Vector2.ZERO
+	
+	# 3. 计算居中偏移（如果容器比缩放后的视口大）
+	var scaled_viewport_size = viewport_size * scale
+	var offset = (container_size - scaled_viewport_size) / 2
+	
+	# 4. 转换为SubViewport内部坐标（修正偏移和缩放）
+	var viewport_pos = (local_in_container - offset) / scale
+	
+	# 限制在视口范围内
+	return viewport_pos.clamped(Vector2.ZERO, viewport_size)
