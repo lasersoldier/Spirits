@@ -287,4 +287,3 @@ func get_terrain_placement_positions(card: Card, source_sprite: Sprite, game_map
 					positions.append(neighbor)
 	
 	return positions
-

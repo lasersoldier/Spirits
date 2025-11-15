@@ -4,11 +4,17 @@ extends Panel
 # 卡牌引用
 var card: Card = null
 
+# 游戏管理器引用（用于检查当前阶段）
+var game_manager: GameManager = null
+
 # 拖动状态
 var is_dragging: bool = false
 var is_right_dragging: bool = false  # 右键拖拽状态
 var drag_offset: Vector2 = Vector2.ZERO
 var original_position: Vector2 = Vector2.ZERO
+
+# 是否允许拖动（部署阶段禁用）
+var can_drag: bool = true
 
 # 信号
 signal card_drag_started(card_ui: CardUI, card: Card)
@@ -20,6 +26,8 @@ signal card_right_clicked(card_ui: CardUI, card: Card)
 func _ready():
 	# 设置鼠标输入
 	mouse_filter = MOUSE_FILTER_STOP
+	# 确保裁剪超出内容
+	clip_contents = true
 	# 设置样式，让卡牌看起来可点击
 	var style_box = StyleBoxFlat.new()
 	style_box.bg_color = Color(0.2, 0.2, 0.3, 0.9)
@@ -37,6 +45,10 @@ func _ready():
 	set_process_unhandled_input(true)
 
 func _gui_input(event: InputEvent):
+	# 检查是否允许拖动（部署阶段禁用）
+	if not can_drag:
+		return
+	
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -68,6 +80,10 @@ func _process(_delta):
 		_update_drag_position(Vector2.ZERO)
 
 func _start_drag(_mouse_pos: Vector2):
+	# 检查是否允许拖动
+	if not can_drag:
+		return
+	
 	# 如果已经在右键拖拽，先结束右键拖拽
 	if is_right_dragging:
 		_end_right_drag(Vector2.ZERO)
@@ -97,6 +113,10 @@ func _end_drag(_mouse_pos: Vector2):
 	card_drag_ended.emit(self, card, global_mouse)
 
 func _start_right_drag(_mouse_pos: Vector2):
+	# 检查是否允许拖动
+	if not can_drag:
+		return
+	
 	# 如果已经在左键拖拽，先结束左键拖拽
 	if is_dragging:
 		_end_drag(Vector2.ZERO)
@@ -122,3 +142,22 @@ func _end_right_drag(_mouse_pos: Vector2):
 func set_card(c: Card):
 	card = c
 
+# 设置游戏管理器引用
+func set_game_manager(gm: GameManager):
+	game_manager = gm
+	_update_drag_state()
+
+# 更新拖动状态（根据当前游戏阶段）
+func _update_drag_state():
+	if not game_manager:
+		can_drag = true
+		return
+	
+	# 部署阶段禁用拖动
+	can_drag = (game_manager.current_phase != GameManager.GamePhase.DEPLOYMENT)
+	
+	# 更新卡牌外观（禁用时变灰）
+	if not can_drag:
+		modulate = Color(0.6, 0.6, 0.6, 0.8)  # 变灰且半透明
+	else:
+		modulate = Color.WHITE  # 恢复正常

@@ -150,35 +150,39 @@ func _resolve_attack_action(action: Action) -> Dictionary:
 		return {"success": false, "message": "无效的攻击目标"}
 	
 	var target = action.target as Sprite
+	var is_basic_action = action.data.get("is_basic_action", false)
+	var player_id = action.player_id
 	
+	return execute_attack(action.sprite, target, is_basic_action, player_id, action.card)
+
+# 执行攻击（公共方法，可直接调用）
+func execute_attack(sprite: Sprite, target: Sprite, is_basic_action: bool = false, player_id: int = -1, card: Card = null) -> Dictionary:
 	# 检查攻击范围
-	if not action.sprite.is_in_attack_range(target.hex_position):
+	if not sprite.is_in_attack_range(target.hex_position):
 		return {"success": false, "message": "目标不在攻击范围内"}
 	
 	# 检查高度限制
-	var attacker_terrain = game_map.get_terrain(action.sprite.hex_position)
+	var attacker_terrain = game_map.get_terrain(sprite.hex_position)
 	var target_terrain = game_map.get_terrain(target.hex_position)
 	var attacker_level = attacker_terrain.height_level if attacker_terrain else 1
 	var target_level = target_terrain.height_level if target_terrain else 1
 	
-	if not terrain_manager.can_attack_height(attacker_level, target_level, action.sprite.attack_height_limit):
+	if not terrain_manager.can_attack_height(attacker_level, target_level, sprite.attack_height_limit):
 		return {"success": false, "message": "高度限制：无法攻击该目标"}
-	
-	# 判断是否是基本行动（弃牌行动）
-	var is_basic_action = action.data.get("is_basic_action", false)
 	
 	# 计算伤害
 	var damage = 1
-	if action.card and not is_basic_action:
+	if card and not is_basic_action:
 		# 卡牌攻击：使用卡牌伤害计算
-		damage = card_interface._calculate_damage(action.card, action.sprite, target, game_map)
+		damage = card_interface._calculate_damage(card, sprite, target, game_map)
 		# 消耗能量
-		energy_manager.use_card(action.player_id, action.card.energy_cost)
-		action.card.use()
+		if player_id >= 0:
+			energy_manager.use_card(player_id, card.energy_cost)
+		card.use()
 	# 基本行动：固定1点伤害，不消耗能量
 	
 	# 执行攻击
-	action.sprite.attack_target(target, damage)
+	sprite.attack_target(target, damage)
 	
 	return {"success": true, "message": "造成" + str(damage) + "点伤害"}
 
@@ -188,38 +192,60 @@ func _resolve_move_action(action: Action) -> Dictionary:
 		return {"success": false, "message": "无效的移动目标"}
 	
 	var target_pos = action.target as Vector2i
+	var is_basic_action = action.data.get("is_basic_action", false)
+	var player_id = action.player_id
 	
+	return execute_move(action.sprite, target_pos, is_basic_action, player_id, action.card)
+
+# 执行移动（公共方法，可直接调用）
+func execute_move(sprite: Sprite, target_pos: Vector2i, is_basic_action: bool = false, player_id: int = -1, card: Card = null) -> Dictionary:
 	# 检查是否可以移动到目标位置
-	if not terrain_manager.can_move_to(action.sprite, target_pos):
+	if not terrain_manager.can_move_to(sprite, target_pos):
 		return {"success": false, "message": "无法移动到该位置"}
 	
-	# 判断是否是基本行动（弃牌行动）
-	var is_basic_action = action.data.get("is_basic_action", false)
-	
 	# 检查移动距离
-	var distance = HexGrid.hex_distance(action.sprite.hex_position, target_pos)
+	var distance = HexGrid.hex_distance(sprite.hex_position, target_pos)
 	var movement_cost = distance
 	
 	# 应用地形效果
-	var terrain_effects = terrain_manager.apply_terrain_effects(action.sprite, target_pos)
+	var terrain_effects = terrain_manager.apply_terrain_effects(sprite, target_pos)
 	if terrain_effects.movement_bonus > 0:
 		movement_cost = max(1, movement_cost - terrain_effects.movement_bonus)
 	if terrain_effects.movement_cost_multiplier > 1.0:
 		movement_cost = int(ceil(movement_cost * terrain_effects.movement_cost_multiplier))
 	
 	# 检查移动力
-	if action.sprite.remaining_movement < movement_cost:
-		return {"success": false, "message": "移动力不足"}
+	# 基本行动（弃牌行动）：不消耗移动力，允许在同一回合内多次移动
+	# 卡牌行动：正常消耗移动力
+	if is_basic_action:
+		# 基本行动：不消耗移动力，但需要检查距离是否合理（限制在基础移动力范围内）
+		# 允许超出当前剩余移动力，因为基本行动不消耗移动力
+		if movement_cost > sprite.base_movement:
+			return {"success": false, "message": "移动距离超出基础移动力范围（距离: " + str(movement_cost) + "，基础移动力: " + str(sprite.base_movement) + "）"}
+	else:
+		# 卡牌行动：正常检查并消耗移动力
+		if sprite.remaining_movement < movement_cost:
+			return {"success": false, "message": "移动力不足（需要 " + str(movement_cost) + "，剩余 " + str(sprite.remaining_movement) + "）"}
 	
 	# 执行移动
-	action.sprite.move_to(target_pos)
-	action.sprite.consume_movement(movement_cost)
-	action.sprite.update_terrain_effects(terrain_effects)
+	var old_pos = sprite.hex_position
+	sprite.move_to(target_pos)
+	
+	# 只有非基本行动才消耗移动力
+	if not is_basic_action:
+		sprite.consume_movement(movement_cost)
+	
+	sprite.update_terrain_effects(terrain_effects)
+	
+	if is_basic_action:
+		print("执行移动（基本行动，不消耗移动力）: ", sprite.sprite_name, " 从 ", old_pos, " 移动到 ", sprite.hex_position, " 移动距离: ", movement_cost, " 移动力保持: ", sprite.remaining_movement, "/", sprite.base_movement)
+	else:
+		print("执行移动: ", sprite.sprite_name, " 从 ", old_pos, " 移动到 ", sprite.hex_position, " 消耗移动力: ", movement_cost, " 剩余移动力: ", sprite.remaining_movement)
 	
 	# 如果是卡牌行动，消耗能量（基本行动不消耗）
-	if action.card and not is_basic_action:
-		energy_manager.use_card(action.player_id, action.card.energy_cost)
-		action.card.use()
+	if card and not is_basic_action and player_id >= 0:
+		energy_manager.use_card(player_id, card.energy_cost)
+		card.use()
 	
 	return {"success": true, "message": "移动到" + str(target_pos)}
 

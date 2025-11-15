@@ -76,4 +76,3 @@ func _get_card_key(card: Card) -> String:
 # 获取剩余卡牌数量
 func get_remaining_count() -> int:
 	return max(0, card_pool.size() - current_index)
-

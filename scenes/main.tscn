@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3 uid="uid://c6cmb28yfv6ll"]
+[gd_scene load_steps=6 format=3 uid="uid://c6cmb28yfv6ll"]
 
 [ext_resource type="Script" uid="uid://cxcsvl70sn3cn" path="res://scripts/core/game_manager.gd" id="1_game_manager"]
 [ext_resource type="Script" uid="uid://cqy7gjifllxk5" path="res://scripts/ui/main_ui.gd" id="2_main_ui"]
 [ext_resource type="Script" uid="uid://bub6oy0nm4w0j" path="res://scripts/map/game_map.gd" id="3_game_map"]
 [ext_resource type="Script" uid="uid://dur0wxo4mtwx4" path="res://scripts/utils/camera_controller.gd" id="4_camera_controller"]
+[ext_resource type="Script" path="res://scripts/ui/hand_card_ui.gd" id="5_hand_card_ui"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1_game_manager")
@@ -55,15 +56,16 @@ grow_vertical = 0
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 0.8
+anchor_top = 0.75
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -500.0
-offset_top = 10.0
+offset_top = 0.0
 offset_right = 500.0
-offset_bottom = -20.0
+offset_bottom = -10.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("5_hand_card_ui")
 
 [node name="EnergyLabel" type="Label" parent="UI"]
 layout_mode = 1

@@ -116,4 +116,3 @@ func _build_ai_deck_hard(_player_id: int) -> Array[Card]:
 	# 打乱顺序
 	deck.shuffle()
 	return deck
-

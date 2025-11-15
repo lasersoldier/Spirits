@@ -41,12 +41,26 @@ func draw_card_with_discard(card: Card) -> Card:
 
 # 移除卡牌（使用或弃置）
 func remove_card(card: Card, reason: String = "used"):
-	var index = hand_cards.find(card)
+	print("HandCardManager: remove_card 被调用，卡牌: ", card.card_name, " 原因: ", reason)
+	print("HandCardManager: 当前手牌数量: ", hand_cards.size())
+	
+	# 尝试通过名称查找卡牌（因为对象引用可能不同）
+	var index = -1
+	for i in range(hand_cards.size()):
+		if hand_cards[i].card_name == card.card_name:
+			index = i
+			break
+	
 	if index >= 0:
-		hand_cards.remove_at(index)
-		discarded_cards.append({"card": card, "reason": reason})
-		card_discarded.emit(card, reason)
+		var removed_card = hand_cards[index]  # 先获取卡牌
+		hand_cards.remove_at(index)  # 然后移除（remove_at返回void）
+		discarded_cards.append({"card": removed_card, "reason": reason})
+		card_discarded.emit(removed_card, reason)
 		hand_updated.emit(player_id, hand_cards.size())
+		print("HandCardManager: 成功移除卡牌，剩余手牌数量: ", hand_cards.size())
+	else:
+		print("HandCardManager: 错误：未找到卡牌 ", card.card_name, " 在手牌中")
+		print("HandCardManager: 当前手牌中的卡牌: ", hand_cards.map(func(c): return c.card_name))
 
 # 弃置卡牌
 func discard_card(card: Card):
@@ -92,4 +106,3 @@ func is_hand_full() -> bool:
 func clear_hand():
 	hand_cards.clear()
 	hand_updated.emit(player_id, 0)
-

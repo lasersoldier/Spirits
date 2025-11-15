@@ -4,7 +4,7 @@ extends Control
 # UI节点引用
 @onready var map_viewport: SubViewportContainer
 @onready var sprite_status_panel: Panel
-@onready var hand_card_area: HBoxContainer
+@onready var hand_card_ui: HandCardUI
 @onready var energy_label: Label
 @onready var bounty_label: Label
 @onready var turn_timer_label: Label
@@ -17,9 +17,6 @@ var deploy_ui: DeployUI = null
 
 # 地图点击处理器
 var map_click_handler: MapClickHandler = null
-
-# 已连接手牌信号的玩家ID集合
-var connected_hand_players: Array[int] = []
 
 # 当前拖动的卡牌
 var dragging_card_ui: CardUI = null
@@ -60,14 +57,24 @@ var cancel_card_button: Button = null
 # 基本行动选择按钮
 var basic_action_buttons: Dictionary = {}  # "attack" 和 "move" 按钮
 
+# 精灵资料卡
+var sprite_info_card: SpriteInfoCard = null
+
 func _ready():
 	# 初始化UI节点
 	map_viewport = get_node_or_null("MapViewport") as SubViewportContainer
 	sprite_status_panel = get_node_or_null("SpriteStatusPanel") as Panel
-	hand_card_area = get_node_or_null("HandCardArea") as HBoxContainer
+	hand_card_ui = get_node_or_null("HandCardArea") as HandCardUI
 	energy_label = get_node_or_null("EnergyLabel") as Label
 	bounty_label = get_node_or_null("BountyLabel") as Label
 	turn_timer_label = get_node_or_null("TurnTimerLabel") as Label
+	
+	# 连接手牌UI的信号
+	if hand_card_ui:
+		hand_card_ui.card_drag_started.connect(_on_card_drag_started)
+		hand_card_ui.card_drag_ended.connect(_on_card_drag_ended)
+		hand_card_ui.card_right_drag_started.connect(_on_card_right_drag_started)
+		hand_card_ui.card_right_drag_ended.connect(_on_card_right_drag_ended)
 	
 	# 创建箭头容器（覆盖整个屏幕）
 	card_arrow_container = Control.new()
@@ -86,11 +93,24 @@ func _ready():
 	cancel_card_button.pressed.connect(_on_cancel_card_use)
 	add_child(cancel_card_button)
 	
+	# 创建精灵资料卡
+	sprite_info_card = SpriteInfoCard.new()
+	sprite_info_card.visible = false
+	sprite_info_card.game_manager = null  # 稍后在set_game_manager中设置
+	add_child(sprite_info_card)
+	print("精灵资料卡已创建并添加到UI")
+	
 	# 设置处理输入
 	set_process_input(true)
 
-# 处理输入（取消卡牌使用）
+# 处理输入（取消卡牌使用、显示精灵资料卡）
 func _input(event: InputEvent):
+	# 处理鼠标中键点击（显示精灵资料卡）
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
+		_handle_middle_click()
+		# 不返回，让资料卡也能处理点击外部关闭
+		return
+	
 	# 处理取消卡牌使用（右键或ESC键）
 	if card_use_state.active:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
@@ -105,6 +125,12 @@ func _input(event: InputEvent):
 # 设置游戏管理器引用
 func set_game_manager(gm: GameManager):
 	game_manager = gm
+	# 传递游戏管理器引用给资料卡
+	if sprite_info_card:
+		sprite_info_card.game_manager = gm
+	# 传递游戏管理器引用给手牌UI
+	if hand_card_ui:
+		hand_card_ui.set_game_manager(gm)
 	_connect_signals()
 
 func _connect_signals():
@@ -114,101 +140,11 @@ func _connect_signals():
 	game_manager.round_started.connect(_on_round_started)
 	game_manager.phase_changed.connect(_on_phase_changed)
 	game_manager.all_actions_submitted.connect(_on_all_actions_submitted)
-	
-	# 连接手牌更新信号（如果手牌管理器已创建）
-	_connect_hand_signals()
-
-# 连接手牌更新信号
-func _connect_hand_signals():
-	if not game_manager:
-		return
-	
-	# 连接所有玩家的手牌更新信号
-	for player_id in game_manager.hand_managers.keys():
-		# 避免重复连接
-		if player_id in connected_hand_players:
-			continue
-		
-		var hand_manager = game_manager.hand_managers[player_id]
-		if hand_manager:
-			# 连接信号
-			hand_manager.hand_updated.connect(_on_hand_updated.bind(player_id))
-			connected_hand_players.append(player_id)
 
 # 更新精灵状态面板
 func update_sprite_status(_sprites: Array[Sprite]):
 	# 更新显示所有精灵的血量、存活状态等
 	pass
-
-# 更新手牌栏
-func update_hand_cards(cards: Array[Card]):
-	# 清空现有手牌显示
-	for child in hand_card_area.get_children():
-		child.queue_free()
-	
-	# 设置手牌区域的对齐方式为居中
-	hand_card_area.alignment = BoxContainer.ALIGNMENT_CENTER
-	
-	# 创建卡牌UI
-	for card in cards:
-		var card_ui = _create_card_ui(card)
-		hand_card_area.add_child(card_ui)
-
-# 创建卡牌UI（使用全局缩放）
-func _create_card_ui(card: Card) -> Control:
-	var card_ui = CardUI.new()
-	card_ui.set_card(card)
-	# 基础尺寸，会自动缩放
-	card_ui.custom_minimum_size = UIScaleManager.scale_vec2(Vector2(120, 180))
-	UIScaleManager.apply_scale_to_panel(card_ui)
-	
-	# 连接拖动信号
-	card_ui.card_drag_started.connect(_on_card_drag_started)
-	card_ui.card_drag_ended.connect(_on_card_drag_ended)
-	
-	# 连接右键拖拽信号（弃牌行动）
-	card_ui.card_right_drag_started.connect(_on_card_right_drag_started)
-	card_ui.card_right_drag_ended.connect(_on_card_right_drag_ended)
-	
-	# 卡牌名称（使用全局缩放字体）
-	var name_label = Label.new()
-	name_label.text = card.card_name
-	name_label.position = UIScaleManager.scale_vec2(Vector2(10, 10))
-	UIScaleManager.apply_scale_to_label(name_label, 16)
-	card_ui.add_child(name_label)
-	
-	# 属性标识（右上角小圆圈，使用全局缩放）
-	var attr_container = HBoxContainer.new()
-	attr_container.position = UIScaleManager.scale_vec2(Vector2(90, 10))
-	for attr in card.attributes:
-		var attr_circle = ColorRect.new()
-		attr_circle.custom_minimum_size = UIScaleManager.scale_vec2(Vector2(15, 15))
-		attr_circle.color = _get_attribute_color(attr)
-		attr_container.add_child(attr_circle)
-	card_ui.add_child(attr_container)
-	
-	# 能量消耗（使用全局缩放字体和位置）
-	var cost_label = Label.new()
-	cost_label.text = str(card.energy_cost)
-	cost_label.position = UIScaleManager.scale_vec2(Vector2(10, 150))
-	UIScaleManager.apply_scale_to_label(cost_label, 18)
-	card_ui.add_child(cost_label)
-	
-	return card_ui
-
-# 获取属性颜色
-func _get_attribute_color(attr: String) -> Color:
-	match attr:
-		"fire":
-			return Color.RED
-		"wind":
-			return Color.CYAN
-		"water":
-			return Color.BLUE
-		"rock":
-			return Color.GRAY
-		_:
-			return Color.WHITE
 
 # 更新能量显示
 func update_energy(_player_id: int, energy: int):
@@ -238,27 +174,26 @@ func _on_phase_changed(new_phase: GameManager.GamePhase):
 			# 显示部署界面
 			_show_deploy_ui()
 			# 部署阶段也显示手牌（用于选择精灵时参考）
-			_connect_hand_signals()
-			_refresh_hand_cards()
+			if hand_card_ui:
+				# 确保信号已连接（手牌管理器在_deal_starting_hands时创建）
+				hand_card_ui._connect_hand_signals()
+				hand_card_ui.refresh_hand_cards()
+			# 确保地图点击处理器已设置（用于部署）
+			_setup_map_click_handler()
 		GameManager.GamePhase.PLAYING:
 			# 隐藏部署界面，显示游戏界面
 			_hide_deploy_ui()
-			# 确保手牌信号已连接（手牌管理器在start_game时创建）
-			_connect_hand_signals()
 			# 进入游戏阶段时显示手牌
-			_refresh_hand_cards()
+			if hand_card_ui:
+				# 确保信号已连接（手牌管理器在_deal_starting_hands时创建）
+				hand_card_ui._connect_hand_signals()
+				hand_card_ui.refresh_hand_cards()
+			# 确保地图点击处理器已设置（用于游戏操作，如移动、攻击等）
+			_setup_map_click_handler()
 		GameManager.GamePhase.ENDED:
 			# 显示结算界面
 			_hide_deploy_ui()
-
-# 刷新手牌显示
-func _refresh_hand_cards():
-	if not game_manager:
-		return
-	
-	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
-	if hand_manager:
-		update_hand_cards(hand_manager.hand_cards)
+			# 游戏结束时可以保留地图点击处理器（或者销毁，根据需要）
 
 func _show_deploy_ui():
 	if deploy_ui:
@@ -275,19 +210,23 @@ func _show_deploy_ui():
 	deploy_ui.deployment_cancelled.connect(_on_deployment_cancelled)
 	add_child(deploy_ui)
 	
-	# 设置地图点击处理器
-	_setup_map_click_handler()
+	# 注意：地图点击处理器在阶段变化时设置，不在这里设置
+	# 这样可以确保在部署阶段和游戏阶段都存在
 
 func _hide_deploy_ui():
 	if deploy_ui:
 		deploy_ui.queue_free()
 		deploy_ui = null
 	
-	if map_click_handler:
-		map_click_handler.queue_free()
-		map_click_handler = null
+	# 注意：不要在这里销毁地图点击处理器
+	# 因为游戏阶段也需要使用地图点击处理器
+	# 地图点击处理器会在阶段变化时重新设置（如果需要）
 
 func _setup_map_click_handler():
+	# 如果已经存在，不需要重复创建
+	if map_click_handler:
+		return
+	
 	if not game_manager or not game_manager.game_map:
 		return
 	
@@ -303,20 +242,31 @@ func _setup_map_click_handler():
 	map_click_handler = MapClickHandler.new(game_manager.game_map, camera, sub_viewport)
 	map_click_handler.hex_clicked.connect(_on_hex_clicked)
 	add_child(map_click_handler)
+	print("地图点击处理器已设置")
 
 func _on_hex_clicked(hex_coord: Vector2i):
+	print("=== 地图点击事件 ===")
+	print("点击六边形: ", hex_coord)
+	print("弃牌状态 active: ", discard_action_state.active)
+	print("弃牌状态 action_type: ", discard_action_state.action_type)
+	print("弃牌状态 source_sprite: ", discard_action_state.source_sprite.sprite_name if discard_action_state.source_sprite else "无")
+	print("卡牌使用状态 active: ", card_use_state.active)
+	
 	# 如果处于弃牌行动阶段，处理基本行动目标选择
 	if discard_action_state.active:
+		print("处理弃牌行动目标选择")
 		_handle_discard_action_target_selection(hex_coord)
 		return
 	
 	# 如果处于卡牌使用阶段，处理卡牌目标选择
 	if card_use_state.active:
+		print("处理卡牌目标选择")
 		_handle_card_target_selection(hex_coord)
 		return
 	
 	# 否则处理部署UI
 	if deploy_ui:
+		print("处理部署UI")
 		deploy_ui.handle_map_click(hex_coord)
 
 func _on_deployment_complete(selected_ids: Array[String], positions: Array[Vector2i]):
@@ -331,14 +281,6 @@ func _on_deployment_cancelled():
 
 func _on_all_actions_submitted():
 	pass
-
-# 手牌更新处理
-func _on_hand_updated(player_id: int, _hand_size: int):
-	# 只更新人类玩家的手牌显示
-	if player_id == GameManager.HUMAN_PLAYER_ID:
-		var hand_manager = game_manager.hand_managers.get(player_id)
-		if hand_manager:
-			update_hand_cards(hand_manager.hand_cards)
 
 # 卡牌拖动开始
 func _on_card_drag_started(card_ui: CardUI, card: Card):
@@ -440,6 +382,11 @@ func _on_card_right_drag_ended(_card_ui: CardUI, card: Card, drop_position: Vect
 	set_process(false)
 	
 	print("结束右键拖拽弃牌: ", card.card_name, " 位置: ", drop_position)
+	
+	# 如果已经在弃牌行动阶段且已经选择了行动类型，忽略新的拖拽（防止重置状态）
+	if discard_action_state.active and discard_action_state.action_type != "":
+		print("已在弃牌行动阶段且已选择行动类型，忽略新的拖拽操作")
+		return
 	
 	# 检查是否在游戏阶段
 	if not game_manager or game_manager.current_phase != GameManager.GamePhase.PLAYING:
@@ -544,6 +491,29 @@ func _get_sprite_at_position(screen_pos: Vector2) -> Sprite:
 			return sprite
 	
 	return null
+
+# 处理鼠标中键点击（显示精灵资料卡）
+func _handle_middle_click():
+	if not game_manager:
+		return
+	
+	# 获取鼠标位置
+	var mouse_pos = get_global_mouse_position()
+	
+	# 查找该位置的精灵
+	var sprite = _get_sprite_at_position(mouse_pos)
+	
+	if sprite:
+		# 显示精灵资料卡
+		if sprite_info_card:
+			sprite_info_card.show_sprite_info(sprite)
+			sprite_info_card.tracked_sprite = sprite  # 设置跟踪的精灵
+			print("显示精灵资料卡: ", sprite.sprite_name)
+	else:
+		# 如果没有精灵，隐藏资料卡
+		if sprite_info_card and sprite_info_card.visible:
+			sprite_info_card.hide_info()
+			print("隐藏精灵资料卡")
 
 # 尝试在精灵上使用卡牌
 func _try_use_card_on_sprite(card: Card, target_sprite: Sprite):
@@ -986,7 +956,18 @@ func _clear_right_drag_highlight():
 # source_sprite: 执行行动的精灵（如果为null，需要先选择）
 # target_sprite: 拖拽到的精灵（可能是执行者，也可能是攻击目标）
 func _enter_discard_action_selection_phase(card: Card, source_sprite: Sprite, target_sprite: Sprite):
+	print("进入弃牌行动选择阶段: ", card.card_name if card else "未知")
+	print("之前的 active 状态: ", discard_action_state.active)
+	print("之前的 action_type: ", discard_action_state.action_type)
+	
 	if not game_manager:
+		return
+	
+	# 如果已经在弃牌行动阶段且已经选择了行动类型，不要重置
+	if discard_action_state.active and discard_action_state.action_type != "":
+		print("警告：已在弃牌行动阶段且已选择行动类型，保持当前状态")
+		# 只更新卡牌，保持 action_type 和执行者
+		discard_action_state.card = card
 		return
 	
 	# 设置弃牌行动状态
@@ -1047,6 +1028,7 @@ func _show_basic_action_buttons():
 	attack_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	attack_button.position = Vector2(-150, -100)
 	attack_button.size = Vector2(120, 50)
+	attack_button.mouse_filter = Control.MOUSE_FILTER_STOP  # 只拦截按钮区域内的点击
 	UIScaleManager.apply_scale_to_button(attack_button, 18)
 	attack_button.pressed.connect(_on_select_basic_attack)
 	add_child(attack_button)
@@ -1058,6 +1040,7 @@ func _show_basic_action_buttons():
 	move_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	move_button.position = Vector2(30, -100)
 	move_button.size = Vector2(120, 50)
+	move_button.mouse_filter = Control.MOUSE_FILTER_STOP  # 只拦截按钮区域内的点击
 	UIScaleManager.apply_scale_to_button(move_button, 18)
 	move_button.pressed.connect(_on_select_basic_move)
 	add_child(move_button)
@@ -1093,10 +1076,16 @@ func _on_select_basic_attack():
 
 # 选择基本移动行动
 func _on_select_basic_move():
+	print("点击移动按钮")
+	print("当前弃牌状态 active: ", discard_action_state.active)
+	print("当前 action_type: ", discard_action_state.action_type)
+	
 	if not discard_action_state.active or not game_manager:
+		print("错误：弃牌状态未激活或游戏管理器不存在")
 		return
 	
 	discard_action_state.action_type = "move"
+	print("设置 action_type = move，当前 active: ", discard_action_state.active)
 	
 	# 隐藏行动选择按钮
 	_hide_basic_action_buttons()
@@ -1110,7 +1099,9 @@ func _on_select_basic_move():
 	
 	# 如果已有执行者，直接高亮该精灵的可移动位置
 	print("高亮 ", source_sprite.sprite_name, " 的可移动位置")
+	print("高亮前 active: ", discard_action_state.active)
 	_highlight_move_targets_for_discard_action(source_sprite)
+	print("高亮后 active: ", discard_action_state.active)
 
 # 高亮所有己方精灵（用于选择攻击者或移动者）
 func _highlight_friendly_sprites():
@@ -1150,7 +1141,11 @@ func _highlight_attackable_friendly_sprites(target_sprite: Sprite):
 
 # 处理弃牌行动目标选择
 func _handle_discard_action_target_selection(hex_coord: Vector2i):
+	print("处理弃牌行动目标选择: ", hex_coord)
+	print("弃牌状态 - active: ", discard_action_state.active, " action_type: ", discard_action_state.action_type, " source_sprite: ", discard_action_state.source_sprite.sprite_name if discard_action_state.source_sprite else "无")
+	
 	if not discard_action_state.active or not game_manager:
+		print("弃牌状态未激活或游戏管理器不存在")
 		return
 	
 	var action_type = discard_action_state.action_type
@@ -1159,11 +1154,13 @@ func _handle_discard_action_target_selection(hex_coord: Vector2i):
 	# 如果还没有选择行动类型，说明还在选择执行者阶段
 	if action_type == "":
 		# 选择己方精灵作为执行者
+		print("选择执行者阶段")
 		_select_source_sprite_for_discard_action(hex_coord)
 		return
 	
 	if action_type == "attack":
 		# 攻击行动
+		print("攻击行动类型")
 		if not source_sprite:
 			# 还未选择己方精灵，选择精灵
 			_select_source_sprite_for_discard_attack(hex_coord)
@@ -1172,12 +1169,17 @@ func _handle_discard_action_target_selection(hex_coord: Vector2i):
 			_select_attack_target_for_discard_action(hex_coord)
 	elif action_type == "move":
 		# 移动行动
+		print("移动行动类型，source_sprite: ", source_sprite.sprite_name if source_sprite else "无")
 		if not source_sprite:
 			# 还未选择己方精灵，选择精灵
+			print("选择移动精灵")
 			_select_source_sprite_for_discard_move(hex_coord)
 		else:
 			# 已经选择了精灵，选择移动目标
+			print("选择移动目标位置")
 			_select_move_target_for_discard_action(hex_coord)
+	else:
+		print("未知行动类型: ", action_type)
 
 # 为弃牌行动选择己方精灵作为执行者（当拖到敌方精灵时）
 func _select_source_sprite_for_discard_action(hex_coord: Vector2i):
@@ -1299,21 +1301,45 @@ func _highlight_attack_targets_for_discard_action(source_sprite: Sprite):
 
 # 高亮移动目标（弃牌行动）
 func _highlight_move_targets_for_discard_action(source_sprite: Sprite):
+	print("开始高亮移动目标")
+	print("当前 active: ", discard_action_state.active)
+	
 	if not game_manager or not game_manager.terrain_renderer:
+		print("错误：游戏管理器或地形渲染器不存在")
 		return
 	
 	_clear_discard_action_highlights()
 	
 	# 获取移动范围内的所有可移动位置
-	var movement = source_sprite.remaining_movement
-	var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, movement)
+	# 基本行动（弃牌行动）不消耗移动力，使用基础移动力范围
+	var movement = source_sprite.base_movement  # 使用基础移动力，而不是剩余移动力
+	print("精灵移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement, " 当前位置: ", source_sprite.hex_position)
+	print("基本行动（弃牌）使用基础移动力范围: ", movement, "（不消耗移动力）")
 	
+	var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, movement)
+	print("移动范围内共有 ", range_hexes.size(), " 个六边形")
+	
+	var valid_positions = 0
 	for hex_pos in range_hexes:
+		# 跳过当前位置（原地停留不算移动）
+		if hex_pos == source_sprite.hex_position:
+			continue
+		
+		# 计算移动距离
+		var distance = HexGrid.hex_distance(source_sprite.hex_position, hex_pos)
+		
+		# 检查移动力是否足够（考虑地形效果）
 		if game_manager.terrain_manager.can_move_to(source_sprite, hex_pos):
+			# 这里只做基本检查，实际移动时会再次检查移动力
 			game_manager.terrain_renderer.highlight_selected_position(hex_pos)
 			discard_action_state.highlighted_hexes.append(hex_pos)
+			valid_positions += 1
+			if valid_positions <= 5:  # 只打印前5个
+				print("  高亮可移动位置: ", hex_pos, " 距离: ", distance)
 	
-	print("高亮了 ", discard_action_state.highlighted_hexes.size(), " 个可移动位置")
+	print("高亮了 ", discard_action_state.highlighted_hexes.size(), " 个可移动位置（基础移动力: ", movement, "，当前移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement, "）")
+	print("提示：基本行动（弃牌）不消耗移动力，可以在同一回合内多次移动")
+	print("高亮完成后 active: ", discard_action_state.active)
 
 # 选择攻击目标（弃牌行动）
 func _select_attack_target_for_discard_action(hex_coord: Vector2i):
@@ -1336,15 +1362,41 @@ func _select_attack_target_for_discard_action(hex_coord: Vector2i):
 
 # 选择移动目标（弃牌行动）
 func _select_move_target_for_discard_action(hex_coord: Vector2i):
+	print("选择移动目标: ", hex_coord)
+	print("当前执行者: ", discard_action_state.source_sprite.sprite_name if discard_action_state.source_sprite else "无")
+	print("高亮位置数量: ", discard_action_state.highlighted_hexes.size())
+	
 	if not discard_action_state.source_sprite:
+		print("错误：没有执行者")
 		return
 	
-	# 检查是否是可移动的位置
-	if hex_coord not in discard_action_state.highlighted_hexes:
-		print("无法移动到该位置")
+	var source_sprite = discard_action_state.source_sprite
+	
+	# 基本行动（弃牌行动）不消耗移动力，所以不需要检查剩余移动力
+	# 但是移动距离不能超过基础移动力范围
+	
+	# 检查是否是可移动的位置（使用循环比较以确保类型匹配）
+	var is_valid_target = false
+	for highlighted_hex in discard_action_state.highlighted_hexes:
+		if highlighted_hex == hex_coord:
+			is_valid_target = true
+			break
+	
+	# 如果点击的是当前位置，不允许原地停留（基本行动不消耗移动力，但原地停留没有意义）
+	if hex_coord == source_sprite.hex_position:
+		print("警告：点击了当前位置，原地停留没有意义")
+		return
+	
+	if not is_valid_target:
+		print("无法移动到该位置: ", hex_coord, " 不在可移动位置列表中")
+		print("剩余移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement)
+		# 打印前几个高亮位置用于调试
+		if discard_action_state.highlighted_hexes.size() > 0:
+			print("可移动位置示例: ", discard_action_state.highlighted_hexes[0])
 		return
 	
 	# 提交弃牌移动行动
+	print("提交移动到: ", hex_coord, "（剩余移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement, "）")
 	_submit_discard_move_action(hex_coord)
 
 # 提交弃牌攻击行动
@@ -1355,27 +1407,29 @@ func _submit_discard_attack_action(target_sprite: Sprite):
 	# 从手牌中移除卡牌
 	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
 	if hand_manager:
+		print("弃牌行动：从手牌中移除卡牌 ", discard_action_state.card.card_name, " 移除前手牌数量: ", hand_manager.hand_cards.size())
 		hand_manager.remove_card(discard_action_state.card, "discarded")
+		print("弃牌行动：移除后手牌数量: ", hand_manager.hand_cards.size())
+	else:
+		print("错误：无法获取手牌管理器")
 	
-	# 添加基本攻击行动
-	var action = ActionResolver.Action.new(
-		GameManager.HUMAN_PLAYER_ID,
-		ActionResolver.ActionType.ATTACK,
-		discard_action_state.source_sprite,
+	# 对于基本行动，立即执行攻击，而不是添加到行动队列
+	var source_sprite = discard_action_state.source_sprite
+	var result = game_manager.action_resolver.execute_attack(
+		source_sprite,
 		target_sprite,
-		null,  # 基本行动不使用卡牌
-		{"is_basic_action": true}  # 标记为基本行动
-	)
-	game_manager.action_resolver.add_action(
-		action.player_id,
-		action.action_type,
-		action.sprite,
-		action.target,
-		action.card,
-		action.data
+		true,  # 是基本行动
+		GameManager.HUMAN_PLAYER_ID,
+		null  # 基本行动不使用卡牌
 	)
 	
-	print("提交弃牌攻击行动: ", discard_action_state.source_sprite.sprite_name, " -> ", target_sprite.sprite_name)
+	if result.success:
+		print("攻击成功: ", source_sprite.sprite_name, " -> ", target_sprite.sprite_name, " 消息: ", result.message)
+	else:
+		print("攻击失败: ", result.message)
+		# 攻击失败，返还卡牌
+		if hand_manager:
+			hand_manager.add_card(discard_action_state.card)
 	
 	# 退出弃牌行动阶段
 	_exit_discard_action_phase()
@@ -1388,27 +1442,33 @@ func _submit_discard_move_action(target_pos: Vector2i):
 	# 从手牌中移除卡牌
 	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
 	if hand_manager:
+		print("弃牌行动：从手牌中移除卡牌 ", discard_action_state.card.card_name, " 移除前手牌数量: ", hand_manager.hand_cards.size())
 		hand_manager.remove_card(discard_action_state.card, "discarded")
+		print("弃牌行动：移除后手牌数量: ", hand_manager.hand_cards.size())
+	else:
+		print("错误：无法获取手牌管理器")
 	
-	# 添加基本移动行动
-	var action = ActionResolver.Action.new(
-		GameManager.HUMAN_PLAYER_ID,
-		ActionResolver.ActionType.MOVE,
-		discard_action_state.source_sprite,
+	# 对于基本行动，立即执行移动，而不是添加到行动队列
+	var source_sprite = discard_action_state.source_sprite
+	var result = game_manager.action_resolver.execute_move(
+		source_sprite,
 		target_pos,
-		null,  # 基本行动不使用卡牌
-		{"is_basic_action": true}  # 标记为基本行动
-	)
-	game_manager.action_resolver.add_action(
-		action.player_id,
-		action.action_type,
-		action.sprite,
-		action.target,
-		action.card,
-		action.data
+		true,  # 是基本行动
+		GameManager.HUMAN_PLAYER_ID,
+		null  # 基本行动不使用卡牌
 	)
 	
-	print("提交弃牌移动行动: ", discard_action_state.source_sprite.sprite_name, " -> ", target_pos)
+	if result.success:
+		print("移动成功: ", source_sprite.sprite_name, " -> ", target_pos, " 消息: ", result.message)
+		print("移动后移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement, "（基本行动不消耗移动力）")
+		# 精灵位置已更新，sprite_renderer 会通过信号自动更新视觉位置
+		print("提示：可以使用更多弃牌行动继续移动，只要距离在基础移动力范围内")
+	else:
+		print("移动失败: ", result.message)
+		print("当前移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement)
+		# 移动失败，返还卡牌
+		if hand_manager:
+			hand_manager.add_card(discard_action_state.card)
 	
 	# 退出弃牌行动阶段
 	_exit_discard_action_phase()
