@@ -30,6 +30,9 @@ var turn_time_remaining: float = 0.0
 # 所有玩家是否已提交行动
 var actions_submitted: Dictionary = {}  # key: player_id, value: bool
 
+# 每个精灵本回合的行动次数（用于限制每回合只能进行一次移动和一次攻击）
+var sprite_action_counts: Dictionary = {}  # key: sprite_id (String), value: {"move": int, "attack": int}
+
 # 系统组件
 var game_map: GameMap
 var sprite_library: SpriteLibrary
@@ -62,6 +65,7 @@ signal round_started(round: int)
 signal round_ended(round: int)
 signal action_submitted(player_id: int)
 signal all_actions_submitted()
+signal action_added(action: ActionResolver.Action)  # 当行动添加到队列时发出
 
 func _ready():
 	_initialize_systems()
@@ -245,10 +249,15 @@ func start_round():
 
 # 初始化回合
 func _initialize_round():
+	# 重置所有精灵的行动计数
+	sprite_action_counts.clear()
+	
 	# 所有精灵开始回合
 	for sprite in all_sprites:
 		if sprite.is_alive:
 			sprite.start_turn()
+			# 初始化该精灵的行动计数
+			sprite_action_counts[sprite.sprite_id] = {"move": 0, "attack": 0}
 	
 	# 检查赏金生成
 	var entering_sprites: Array[Sprite] = []
@@ -295,7 +304,26 @@ func _generate_ai_actions():
 		actions_submitted[ai_id] = true
 		action_submitted.emit(ai_id)
 
-# 提交人类玩家行动
+# 添加人类玩家行动（不立即提交，等待回合结束）
+func add_human_action(action: ActionResolver.Action):
+	if actions_submitted.get(HUMAN_PLAYER_ID, false):
+		return  # 已经提交过了
+	
+	# 检查行动限制（每回合每个精灵只能进行一次移动和一次攻击）
+	if not _can_add_action(action):
+		print("无法添加行动：该精灵本回合已经执行过此类型的行动")
+		return
+	
+	# 添加行动到结算器
+	action_resolver.add_action(action.player_id, action.action_type, action.sprite, action.target, action.card, action.data)
+	
+	# 更新行动计数
+	_record_action(action)
+	
+	# 发出信号通知UI更新预览
+	action_added.emit(action)
+
+# 提交人类玩家行动（旧方法，保留兼容性）
 func submit_human_actions(actions: Array[ActionResolver.Action]):
 	if actions_submitted.get(HUMAN_PLAYER_ID, false):
 		return  # 已经提交过了
@@ -304,11 +332,68 @@ func submit_human_actions(actions: Array[ActionResolver.Action]):
 	for action in actions:
 		action_resolver.add_action(action.player_id, action.action_type, action.sprite, action.target, action.card, action.data)
 	
+	# 立即提交（用于AI或特殊情况）
+	submit_human_turn()
+
+# 提交人类玩家回合（按下回合结束按钮时调用）
+func submit_human_turn():
+	if actions_submitted.get(HUMAN_PLAYER_ID, false):
+		return  # 已经提交过了
+	
 	actions_submitted[HUMAN_PLAYER_ID] = true
 	action_submitted.emit(HUMAN_PLAYER_ID)
 	
 	# 检查是否所有玩家都已提交
 	_check_all_submitted()
+
+# 检查是否可以添加行动（限制每回合每个精灵只能进行一次移动和一次攻击）
+func _can_add_action(action: ActionResolver.Action) -> bool:
+	if not action.sprite:
+		return true  # 没有精灵的行动（如地形变化）不受限制
+	
+	var sprite_id = action.sprite.sprite_id
+	var counts = sprite_action_counts.get(sprite_id, {"move": 0, "attack": 0})
+	
+	# 基本行动（弃牌行动）不受限制，卡牌行动受限制
+	var is_basic_action = action.data.get("is_basic_action", false)
+	if is_basic_action:
+		return true  # 基本行动不受限制
+	
+	# 检查行动类型
+	match action.action_type:
+		ActionResolver.ActionType.MOVE:
+			if counts.move >= 1:
+				return false
+		ActionResolver.ActionType.ATTACK:
+			if counts.attack >= 1:
+				return false
+		_:
+			# 其他类型的行动不受限制
+			pass
+	
+	return true
+
+# 记录行动（更新计数）
+func _record_action(action: ActionResolver.Action):
+	if not action.sprite:
+		return  # 没有精灵的行动不记录
+	
+	var sprite_id = action.sprite.sprite_id
+	var counts = sprite_action_counts.get(sprite_id, {"move": 0, "attack": 0})
+	
+	# 基本行动（弃牌行动）不计数，卡牌行动计数
+	var is_basic_action = action.data.get("is_basic_action", false)
+	if is_basic_action:
+		return  # 基本行动不计数
+	
+	# 更新计数
+	match action.action_type:
+		ActionResolver.ActionType.MOVE:
+			counts.move += 1
+		ActionResolver.ActionType.ATTACK:
+			counts.attack += 1
+	
+	sprite_action_counts[sprite_id] = counts
 
 # 检查是否所有玩家都已提交
 func _check_all_submitted():

@@ -148,4 +148,3 @@ func update_terrain_durations():
 
 func _coord_to_key(hex_coord: Vector2i) -> String:
 	return str(hex_coord.x) + "_" + str(hex_coord.y)
-

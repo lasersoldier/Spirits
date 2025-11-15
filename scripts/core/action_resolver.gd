@@ -254,3 +254,67 @@ func _resolve_other_action(_action: Action) -> Dictionary:
 	# 处理其他类型的行动
 	return {"success": true, "message": "行动已执行"}
 
+# 生成行动预览描述
+func get_action_preview(action: Action) -> Dictionary:
+	var preview = {
+		"type": "",
+		"sprite_name": "",
+		"target_description": "",
+		"description": "",
+		"action": action
+	}
+	
+	if not action.sprite:
+		return preview
+	
+	preview.sprite_name = action.sprite.sprite_name
+	
+	match action.action_type:
+		ActionType.EFFECT:
+			preview.type = "特殊效果"
+			if action.card:
+				preview.description = action.card.card_name
+			if action.target is Sprite:
+				preview.target_description = "目标: " + (action.target as Sprite).sprite_name
+			else:
+				preview.target_description = "目标: " + str(action.target)
+		
+		ActionType.TERRAIN:
+			preview.type = "地形变化"
+			if action.card:
+				preview.description = action.card.card_name
+			if action.target is Vector2i:
+				preview.target_description = "位置: " + str(action.target)
+		
+		ActionType.ATTACK:
+			preview.type = "攻击"
+			if action.target is Sprite:
+				var target = action.target as Sprite
+				preview.target_description = "目标: " + target.sprite_name
+				if action.card:
+					preview.description = action.card.card_name
+				else:
+					preview.description = "基本攻击"
+		
+		ActionType.MOVE:
+			preview.type = "移动"
+			if action.target is Vector2i:
+				preview.target_description = "目标位置: " + str(action.target)
+				if action.card:
+					preview.description = action.card.card_name
+				else:
+					preview.description = "基本移动"
+		
+		ActionType.OTHER:
+			preview.type = "其他"
+			preview.description = "其他行动"
+	
+	return preview
+
+# 获取所有行动的预览列表
+func get_all_action_previews() -> Array[Dictionary]:
+	var previews: Array[Dictionary] = []
+	for action in actions:
+		previews.append(get_action_preview(action))
+	return previews
+

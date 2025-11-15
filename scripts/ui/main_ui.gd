@@ -60,6 +60,14 @@ var basic_action_buttons: Dictionary = {}  # "attack" 和 "move" 按钮
 # 精灵资料卡
 var sprite_info_card: SpriteInfoCard = null
 
+# 动作预览UI
+var action_preview_panel: Panel = null
+var action_preview_list: VBoxContainer = null
+var action_preview_items: Array[Control] = []
+
+# 回合结束按钮
+var end_turn_button: Button = null
+
 func _ready():
 	# 初始化UI节点
 	map_viewport = get_node_or_null("MapViewport") as SubViewportContainer
@@ -99,6 +107,9 @@ func _ready():
 	sprite_info_card.game_manager = null  # 稍后在set_game_manager中设置
 	add_child(sprite_info_card)
 	print("精灵资料卡已创建并添加到UI")
+	
+	# 创建回合结束按钮
+	_create_end_turn_button()
 	
 	# 设置处理输入
 	set_process_input(true)
@@ -140,6 +151,7 @@ func _connect_signals():
 	game_manager.round_started.connect(_on_round_started)
 	game_manager.phase_changed.connect(_on_phase_changed)
 	game_manager.all_actions_submitted.connect(_on_all_actions_submitted)
+	game_manager.action_added.connect(_on_action_added)
 
 # 更新精灵状态面板
 func update_sprite_status(_sprites: Array[Sprite]):
@@ -166,7 +178,12 @@ func update_turn_timer(time_remaining: float):
 
 # 信号处理
 func _on_round_started(_round: int):
-	pass
+	# 清除预览
+	_clear_action_preview()
+	# 启用回合结束按钮（新回合开始）
+	if end_turn_button:
+		# 使用 call_deferred 确保在下一帧启用按钮
+		call_deferred("_enable_end_turn_button", _round)
 
 func _on_phase_changed(new_phase: GameManager.GamePhase):
 	match new_phase:
@@ -180,6 +197,9 @@ func _on_phase_changed(new_phase: GameManager.GamePhase):
 				hand_card_ui.refresh_hand_cards()
 			# 确保地图点击处理器已设置（用于部署）
 			_setup_map_click_handler()
+			# 隐藏回合结束按钮
+			if end_turn_button:
+				end_turn_button.visible = false
 		GameManager.GamePhase.PLAYING:
 			# 隐藏部署界面，显示游戏界面
 			_hide_deploy_ui()
@@ -190,10 +210,17 @@ func _on_phase_changed(new_phase: GameManager.GamePhase):
 				hand_card_ui.refresh_hand_cards()
 			# 确保地图点击处理器已设置（用于游戏操作，如移动、攻击等）
 			_setup_map_click_handler()
+			# 显示回合结束按钮
+			if end_turn_button:
+				end_turn_button.visible = true
+				end_turn_button.disabled = false
 		GameManager.GamePhase.ENDED:
 			# 显示结算界面
 			_hide_deploy_ui()
 			# 游戏结束时可以保留地图点击处理器（或者销毁，根据需要）
+			# 隐藏回合结束按钮
+			if end_turn_button:
+				end_turn_button.visible = false
 
 func _show_deploy_ui():
 	if deploy_ui:
@@ -280,7 +307,14 @@ func _on_deployment_cancelled():
 	print("部署已取消")
 
 func _on_all_actions_submitted():
-	pass
+	# 清除预览
+	_clear_action_preview()
+	# 注意：不在这里启用按钮，应该在 _on_round_started() 中启用
+	# 因为此时结算可能还没完成，新回合还没开始
+
+func _on_action_added(_action: ActionResolver.Action):
+	# 当行动添加到队列时，更新预览
+	_update_action_preview()
 
 # 卡牌拖动开始
 func _on_card_drag_started(card_ui: CardUI, card: Card):
@@ -677,28 +711,52 @@ func _confirm_card_use(card: Card, source_sprite: Sprite, target: Variant):
 	
 	print("确认使用卡牌: ", card.card_name, " 目标: ", target)
 	
-	# 应用卡牌效果
-	var card_interface = game_manager.card_interface
-	var result = card_interface.apply_card_effect(
-		card,
+	# 确定行动类型
+	var action_type: ActionResolver.ActionType
+	match card.card_type:
+		"attack":
+			action_type = ActionResolver.ActionType.ATTACK
+		"terrain":
+			action_type = ActionResolver.ActionType.TERRAIN
+		"support":
+			action_type = ActionResolver.ActionType.EFFECT
+		_:
+			print("未知的卡牌类型: ", card.card_type)
+			_exit_card_use_phase()
+			return
+	
+	# 创建行动并添加到队列（不立即执行）
+	var action = ActionResolver.Action.new(
+		GameManager.HUMAN_PLAYER_ID,
+		action_type,
 		source_sprite,
 		target,
-		game_manager.game_map,
-		game_manager.terrain_manager
+		card,
+		{}
 	)
 	
-	if result.success:
-		print("卡牌使用成功: ", result.message)
-		# 从手牌中移除卡牌
-		var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
-		if hand_manager:
-			hand_manager.remove_card(card, "used")
-		# 退出卡牌使用阶段
+	# 添加到行动队列
+	var action_count_before = game_manager.action_resolver.actions.size()
+	game_manager.add_human_action(action)
+	var action_count_after = game_manager.action_resolver.actions.size()
+	
+	# 检查行动是否成功添加（如果被限制，行动不会被添加）
+	if action_count_after == action_count_before:
+		print("无法使用卡牌：该精灵本回合已经执行过此类型的行动")
+		# 不消耗卡牌，直接退出
 		_exit_card_use_phase()
-	else:
-		print("卡牌使用失败")
-		# 使用失败也退出阶段
-		_exit_card_use_phase()
+		return
+	
+	# 从手牌中移除卡牌（已添加到队列，可以移除）
+	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
+	if hand_manager:
+		hand_manager.remove_card(card, "used")
+	
+	# 显示预览
+	_update_action_preview()
+	
+	# 退出卡牌使用阶段
+	_exit_card_use_phase()
 
 # 退出卡牌使用阶段
 func _exit_card_use_phase():
@@ -1413,23 +1471,35 @@ func _submit_discard_attack_action(target_sprite: Sprite):
 	else:
 		print("错误：无法获取手牌管理器")
 	
-	# 对于基本行动，立即执行攻击，而不是添加到行动队列
+	# 创建基本攻击行动并添加到队列（不立即执行）
 	var source_sprite = discard_action_state.source_sprite
-	var result = game_manager.action_resolver.execute_attack(
+	var action = ActionResolver.Action.new(
+		GameManager.HUMAN_PLAYER_ID,
+		ActionResolver.ActionType.ATTACK,
 		source_sprite,
 		target_sprite,
-		true,  # 是基本行动
-		GameManager.HUMAN_PLAYER_ID,
-		null  # 基本行动不使用卡牌
+		null,  # 基本行动不使用卡牌
+		{"is_basic_action": true}  # 标记为基本行动
 	)
 	
-	if result.success:
-		print("攻击成功: ", source_sprite.sprite_name, " -> ", target_sprite.sprite_name, " 消息: ", result.message)
-	else:
-		print("攻击失败: ", result.message)
-		# 攻击失败，返还卡牌
+	# 添加到行动队列（基本行动不受限制，但检查一下以防万一）
+	var action_count_before = game_manager.action_resolver.actions.size()
+	game_manager.add_human_action(action)
+	var action_count_after = game_manager.action_resolver.actions.size()
+	
+	# 检查行动是否成功添加
+	if action_count_after == action_count_before:
+		print("无法添加基本攻击行动")
+		# 返还卡牌
 		if hand_manager:
 			hand_manager.add_card(discard_action_state.card)
+		_exit_discard_action_phase()
+		return
+	
+	# 显示预览
+	_update_action_preview()
+	
+	print("基本攻击行动已添加到队列: ", source_sprite.sprite_name, " -> ", target_sprite.sprite_name)
 	
 	# 退出弃牌行动阶段
 	_exit_discard_action_phase()
@@ -1448,27 +1518,36 @@ func _submit_discard_move_action(target_pos: Vector2i):
 	else:
 		print("错误：无法获取手牌管理器")
 	
-	# 对于基本行动，立即执行移动，而不是添加到行动队列
+	# 创建基本移动行动并添加到队列（不立即执行）
 	var source_sprite = discard_action_state.source_sprite
-	var result = game_manager.action_resolver.execute_move(
+	var action = ActionResolver.Action.new(
+		GameManager.HUMAN_PLAYER_ID,
+		ActionResolver.ActionType.MOVE,
 		source_sprite,
 		target_pos,
-		true,  # 是基本行动
-		GameManager.HUMAN_PLAYER_ID,
-		null  # 基本行动不使用卡牌
+		null,  # 基本行动不使用卡牌
+		{"is_basic_action": true}  # 标记为基本行动
 	)
 	
-	if result.success:
-		print("移动成功: ", source_sprite.sprite_name, " -> ", target_pos, " 消息: ", result.message)
-		print("移动后移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement, "（基本行动不消耗移动力）")
-		# 精灵位置已更新，sprite_renderer 会通过信号自动更新视觉位置
-		print("提示：可以使用更多弃牌行动继续移动，只要距离在基础移动力范围内")
-	else:
-		print("移动失败: ", result.message)
-		print("当前移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement)
-		# 移动失败，返还卡牌
+	# 添加到行动队列（基本行动不受限制，但检查一下以防万一）
+	var action_count_before = game_manager.action_resolver.actions.size()
+	game_manager.add_human_action(action)
+	var action_count_after = game_manager.action_resolver.actions.size()
+	
+	# 检查行动是否成功添加
+	if action_count_after == action_count_before:
+		print("无法添加基本移动行动")
+		# 返还卡牌
 		if hand_manager:
 			hand_manager.add_card(discard_action_state.card)
+		_exit_discard_action_phase()
+		return
+	
+	# 显示预览
+	_update_action_preview()
+	
+	print("基本移动行动已添加到队列: ", source_sprite.sprite_name, " -> ", target_pos)
+	print("提示：可以使用更多弃牌行动继续移动，只要距离在基础移动力范围内")
 	
 	# 退出弃牌行动阶段
 	_exit_discard_action_phase()
@@ -1500,3 +1579,218 @@ func _clear_discard_action_highlights():
 	
 	discard_action_state.highlighted_sprites.clear()
 	discard_action_state.highlighted_hexes.clear()
+
+# ========== 动作预览系统 ==========
+
+# 更新动作预览
+func _update_action_preview():
+	if not game_manager or not game_manager.action_resolver:
+		return
+	
+	# 创建预览面板（如果不存在）
+	if not action_preview_panel:
+		_create_action_preview_panel()
+	
+	# 清除现有预览项
+	_clear_action_preview_items()
+	
+	# 获取所有行动的预览
+	var previews = game_manager.action_resolver.get_all_action_previews()
+	
+	if previews.size() == 0:
+		# 没有行动，隐藏面板
+		if action_preview_panel:
+			action_preview_panel.visible = false
+		return
+	
+	# 显示面板
+	if action_preview_panel:
+		action_preview_panel.visible = true
+	
+	# 按结算顺序分组显示
+	var effect_previews: Array[Dictionary] = []
+	var terrain_previews: Array[Dictionary] = []
+	var attack_previews: Array[Dictionary] = []
+	var move_previews: Array[Dictionary] = []
+	
+	for preview in previews:
+		match preview.action.action_type:
+			ActionResolver.ActionType.EFFECT:
+				effect_previews.append(preview)
+			ActionResolver.ActionType.TERRAIN:
+				terrain_previews.append(preview)
+			ActionResolver.ActionType.ATTACK:
+				attack_previews.append(preview)
+			ActionResolver.ActionType.MOVE:
+				move_previews.append(preview)
+	
+	# 按顺序添加预览项
+	for preview in effect_previews:
+		_add_preview_item(preview)
+	for preview in terrain_previews:
+		_add_preview_item(preview)
+	for preview in attack_previews:
+		_add_preview_item(preview)
+	for preview in move_previews:
+		_add_preview_item(preview)
+	
+	# 在地图上高亮显示动作目标
+	_highlight_action_targets_on_map(previews)
+
+# 创建动作预览面板
+func _create_action_preview_panel():
+	action_preview_panel = Panel.new()
+	action_preview_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	action_preview_panel.position = UIScaleManager.scale_vec2(Vector2(-320, 20))
+	action_preview_panel.size = UIScaleManager.scale_vec2(Vector2(300, 400))
+	action_preview_panel.visible = false
+	
+	# 添加标题
+	var title_label = Label.new()
+	title_label.text = "动作预览"
+	title_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	title_label.position = UIScaleManager.scale_vec2(Vector2(10, 10))
+	title_label.size = UIScaleManager.scale_vec2(Vector2(280, 30))
+	UIScaleManager.apply_scale_to_label(title_label, 20)
+	action_preview_panel.add_child(title_label)
+	
+	# 添加滚动容器
+	var scroll_container = ScrollContainer.new()
+	scroll_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scroll_container.position = UIScaleManager.scale_vec2(Vector2(10, 50))
+	scroll_container.size = UIScaleManager.scale_vec2(Vector2(280, 340))
+	action_preview_panel.add_child(scroll_container)
+	
+	# 添加列表容器
+	action_preview_list = VBoxContainer.new()
+	action_preview_list.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scroll_container.add_child(action_preview_list)
+	
+	add_child(action_preview_panel)
+
+# 添加预览项
+func _add_preview_item(preview: Dictionary):
+	if not action_preview_list:
+		return
+	
+	var item_panel = Panel.new()
+	item_panel.custom_minimum_size = UIScaleManager.scale_vec2(Vector2(260, 60))
+	
+	var vbox = VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.position = UIScaleManager.scale_vec2(Vector2(5, 5))
+	vbox.size = UIScaleManager.scale_vec2(Vector2(250, 50))
+	item_panel.add_child(vbox)
+	
+	# 类型和精灵名称
+	var type_label = Label.new()
+	type_label.text = preview.type + " - " + preview.sprite_name
+	UIScaleManager.apply_scale_to_label(type_label, 16)
+	vbox.add_child(type_label)
+	
+	# 描述
+	var desc_label = Label.new()
+	desc_label.text = preview.description
+	if preview.target_description != "":
+		desc_label.text += " (" + preview.target_description + ")"
+	UIScaleManager.apply_scale_to_label(desc_label, 14)
+	vbox.add_child(desc_label)
+	
+	action_preview_list.add_child(item_panel)
+	action_preview_items.append(item_panel)
+
+# 清除预览项
+func _clear_action_preview_items():
+	for item in action_preview_items:
+		if is_instance_valid(item):
+			item.queue_free()
+	action_preview_items.clear()
+	
+	if action_preview_list:
+		for child in action_preview_list.get_children():
+			child.queue_free()
+
+# 清除动作预览
+func _clear_action_preview():
+	_clear_action_preview_items()
+	if action_preview_panel:
+		action_preview_panel.visible = false
+	
+	# 清除地图上的高亮
+	if game_manager and game_manager.terrain_renderer:
+		game_manager.terrain_renderer.clear_selected_highlights()
+
+# 在地图上高亮显示动作目标
+func _highlight_action_targets_on_map(previews: Array[Dictionary]):
+	if not game_manager or not game_manager.terrain_renderer:
+		return
+	
+	# 清除之前的高亮
+	game_manager.terrain_renderer.clear_selected_highlights()
+	
+	# 高亮所有动作目标
+	for preview in previews:
+		var action = preview.action
+		if not action:
+			continue
+		
+		match action.action_type:
+			ActionResolver.ActionType.ATTACK:
+				if action.target is Sprite:
+					var target = action.target as Sprite
+					game_manager.terrain_renderer.highlight_selected_position(target.hex_position)
+			
+			ActionResolver.ActionType.MOVE:
+				if action.target is Vector2i:
+					var target_pos = action.target as Vector2i
+					game_manager.terrain_renderer.highlight_selected_position(target_pos)
+			
+			ActionResolver.ActionType.TERRAIN:
+				if action.target is Vector2i:
+					var target_pos = action.target as Vector2i
+					game_manager.terrain_renderer.highlight_selected_position(target_pos)
+			
+			ActionResolver.ActionType.EFFECT:
+				if action.target is Sprite:
+					var target = action.target as Sprite
+					game_manager.terrain_renderer.highlight_selected_position(target.hex_position)
+
+# ========== 回合结束按钮 ==========
+
+# 创建回合结束按钮
+func _create_end_turn_button():
+	end_turn_button = Button.new()
+	end_turn_button.text = "回合结束"
+	end_turn_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	end_turn_button.position = UIScaleManager.scale_vec2(Vector2(-170, -60))
+	end_turn_button.size = UIScaleManager.scale_vec2(Vector2(150, 50))
+	UIScaleManager.apply_scale_to_button(end_turn_button, 18)
+	end_turn_button.pressed.connect(_on_end_turn_button_pressed)
+	end_turn_button.visible = false  # 初始隐藏，在游戏阶段显示
+	add_child(end_turn_button)
+
+# 回合结束按钮按下
+func _on_end_turn_button_pressed():
+	if not game_manager:
+		return
+	
+	# 检查是否已经提交
+	if game_manager.actions_submitted.get(GameManager.HUMAN_PLAYER_ID, false):
+		print("已经提交过行动了")
+		return
+	
+	print("点击回合结束按钮，提交回合")
+	# 提交回合
+	game_manager.submit_human_turn()
+	
+	# 禁用按钮
+	if end_turn_button:
+		end_turn_button.disabled = true
+		print("回合结束按钮已禁用")
+
+# 启用回合结束按钮（延迟调用，确保在正确的时机启用）
+func _enable_end_turn_button(round_num: int):
+	if end_turn_button:
+		end_turn_button.disabled = false
+		end_turn_button.visible = true
+		print("回合开始，启用回合结束按钮 - 回合: ", round_num)
