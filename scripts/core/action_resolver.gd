@@ -164,13 +164,18 @@ func _resolve_attack_action(action: Action) -> Dictionary:
 	if not terrain_manager.can_attack_height(attacker_level, target_level, action.sprite.attack_height_limit):
 		return {"success": false, "message": "高度限制：无法攻击该目标"}
 	
+	# 判断是否是基本行动（弃牌行动）
+	var is_basic_action = action.data.get("is_basic_action", false)
+	
 	# 计算伤害
 	var damage = 1
-	if action.card:
+	if action.card and not is_basic_action:
+		# 卡牌攻击：使用卡牌伤害计算
 		damage = card_interface._calculate_damage(action.card, action.sprite, target, game_map)
 		# 消耗能量
 		energy_manager.use_card(action.player_id, action.card.energy_cost)
 		action.card.use()
+	# 基本行动：固定1点伤害，不消耗能量
 	
 	# 执行攻击
 	action.sprite.attack_target(target, damage)
@@ -187,6 +192,9 @@ func _resolve_move_action(action: Action) -> Dictionary:
 	# 检查是否可以移动到目标位置
 	if not terrain_manager.can_move_to(action.sprite, target_pos):
 		return {"success": false, "message": "无法移动到该位置"}
+	
+	# 判断是否是基本行动（弃牌行动）
+	var is_basic_action = action.data.get("is_basic_action", false)
 	
 	# 检查移动距离
 	var distance = HexGrid.hex_distance(action.sprite.hex_position, target_pos)
@@ -207,6 +215,11 @@ func _resolve_move_action(action: Action) -> Dictionary:
 	action.sprite.move_to(target_pos)
 	action.sprite.consume_movement(movement_cost)
 	action.sprite.update_terrain_effects(terrain_effects)
+	
+	# 如果是卡牌行动，消耗能量（基本行动不消耗）
+	if action.card and not is_basic_action:
+		energy_manager.use_card(action.player_id, action.card.energy_cost)
+		action.card.use()
 	
 	return {"success": true, "message": "移动到" + str(target_pos)}
 

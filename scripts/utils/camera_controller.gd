@@ -13,6 +13,8 @@ var fixed_rotation: Vector3 = Vector3(-0.523599, 0, 0)  # 约30度向下
 # 相机旋转控制
 var rotation_speed: float = 2.0  # 旋转速度
 var is_rotating: bool = false  # 是否正在旋转
+var min_pitch: float = -1.5  # 最小俯仰角（向下看，约-85度）
+var max_pitch: float = 0.5   # 最大俯仰角（向上看，约30度）
 
 # 摄像机移动范围限制（可选）
 var min_x: float = -30.0
@@ -72,9 +74,6 @@ func _handle_movement(delta):
 		new_position.z = clamp(new_position.z, min_z, max_z)
 	
 	position = new_position
-	# 如果不在旋转状态，保持固定的俯视角度
-	if not is_rotating:
-		rotation.x = fixed_rotation.x  # 保持俯视角度
 
 # 处理输入事件（用于检测按键刚刚按下）
 func _input(event):
@@ -99,8 +98,10 @@ func _input(event):
 		var mouse_delta = event.relative
 		# 水平移动控制Y轴旋转（左右旋转）
 		rotation.y -= mouse_delta.x * rotation_speed * 0.001
-		# 保持俯视角度不变
-		rotation.x = fixed_rotation.x
+		# 垂直移动控制X轴旋转（上下俯仰）
+		rotation.x -= mouse_delta.y * rotation_speed * 0.001
+		# 限制俯仰角范围
+		rotation.x = clamp(rotation.x, min_pitch, max_pitch)
 
 # 将相机重定位到原点(0, 0)
 func reset_to_origin():

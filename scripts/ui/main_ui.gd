@@ -39,8 +39,26 @@ var card_use_state: Dictionary = {
 	"highlighted_hexes": []  # 高亮的六边形
 }
 
+# 弃牌行动阶段
+var discard_action_state: Dictionary = {
+	"active": false,
+	"card": null,
+	"action_type": "",  # "attack" 或 "move"
+	"source_sprite": null,
+	"target_sprite": null,  # 攻击目标精灵或拖拽到的精灵
+	"highlighted_sprites": [],  # 可攻击的精灵或己方精灵
+	"highlighted_hexes": []  # 可移动的位置
+}
+
+# 右键拖拽状态
+var right_dragging_card: Card = null
+var right_dragging_card_ui: CardUI = null  # 右键拖拽的卡牌UI
+
 # 取消使用按钮
 var cancel_card_button: Button = null
+
+# 基本行动选择按钮
+var basic_action_buttons: Dictionary = {}  # "attack" 和 "move" 按钮
 
 func _ready():
 	# 初始化UI节点
@@ -147,6 +165,10 @@ func _create_card_ui(card: Card) -> Control:
 	# 连接拖动信号
 	card_ui.card_drag_started.connect(_on_card_drag_started)
 	card_ui.card_drag_ended.connect(_on_card_drag_ended)
+	
+	# 连接右键拖拽信号（弃牌行动）
+	card_ui.card_right_drag_started.connect(_on_card_right_drag_started)
+	card_ui.card_right_drag_ended.connect(_on_card_right_drag_ended)
 	
 	# 卡牌名称（使用全局缩放字体）
 	var name_label = Label.new()
@@ -283,6 +305,11 @@ func _setup_map_click_handler():
 	add_child(map_click_handler)
 
 func _on_hex_clicked(hex_coord: Vector2i):
+	# 如果处于弃牌行动阶段，处理基本行动目标选择
+	if discard_action_state.active:
+		_handle_discard_action_target_selection(hex_coord)
+		return
+	
 	# 如果处于卡牌使用阶段，处理卡牌目标选择
 	if card_use_state.active:
 		_handle_card_target_selection(hex_coord)
@@ -315,12 +342,41 @@ func _on_hand_updated(player_id: int, _hand_size: int):
 
 # 卡牌拖动开始
 func _on_card_drag_started(card_ui: CardUI, card: Card):
+	# 如果正在右键拖拽，先清除右键箭头
+	if right_dragging_card:
+		_clear_arrow_indicator()
+		right_dragging_card = null
+	
 	dragging_card_ui = card_ui
 	dragging_card = card
 	print("开始拖动卡牌: ", card.card_name)
 	# 创建箭头指示器
 	_create_arrow_indicator()
+	if arrow_line:
+		arrow_line.default_color = Color(1.0, 0.8, 0.0, 0.8)  # 橙色表示正常使用
 	# 开始处理拖动更新
+	set_process(true)
+
+# 右键拖拽开始（弃牌行动）
+func _on_card_right_drag_started(card_ui: CardUI, card: Card):
+	# 检查是否在游戏阶段
+	if not game_manager or game_manager.current_phase != GameManager.GamePhase.PLAYING:
+		print("只能在游戏阶段使用弃牌行动")
+		return
+	
+	# 如果正在左键拖拽，先清除左键箭头
+	if dragging_card_ui:
+		_clear_arrow_indicator()
+		dragging_card_ui = null
+		dragging_card = null
+	
+	right_dragging_card = card
+	right_dragging_card_ui = card_ui
+	print("开始右键拖拽弃牌: ", card.card_name)
+	# 创建箭头指示器（使用不同颜色表示弃牌）
+	_create_arrow_indicator()
+	if arrow_line:
+		arrow_line.default_color = Color(0.8, 0.2, 0.2, 0.8)  # 红色表示弃牌
 	set_process(true)
 
 # 卡牌拖动结束
@@ -366,6 +422,57 @@ func _on_card_drag_ended(_card_ui: CardUI, card: Card, drop_position: Vector2):
 		_try_use_card_on_sprite(card, target_sprite)
 	else:
 		print("该位置没有精灵")
+
+# 右键拖拽结束（弃牌行动）
+func _on_card_right_drag_ended(_card_ui: CardUI, card: Card, drop_position: Vector2):
+	# 清除箭头和高亮
+	_clear_arrow_indicator()
+	_clear_right_drag_highlight()
+	
+	if not right_dragging_card or right_dragging_card != card:
+		right_dragging_card = null
+		right_dragging_card_ui = null
+		set_process(false)
+		return
+	
+	right_dragging_card = null
+	right_dragging_card_ui = null
+	set_process(false)
+	
+	print("结束右键拖拽弃牌: ", card.card_name, " 位置: ", drop_position)
+	
+	# 检查是否在游戏阶段
+	if not game_manager or game_manager.current_phase != GameManager.GamePhase.PLAYING:
+		print("只能在游戏阶段使用弃牌行动")
+		return
+	
+	# 检查是否拖动到有效的地图位置
+	if not game_manager.game_map:
+		return
+	
+	var target_hex = _get_hex_at_screen_position(drop_position)
+	if target_hex == Vector2i(-1, -1):
+		print("未拖动到有效的地图位置")
+		return
+	
+	# 查找该位置的精灵
+	var target_sprite = null
+	for sprite in game_manager.all_sprites:
+		if sprite.is_alive and sprite.hex_position == target_hex:
+			target_sprite = sprite
+			break
+	
+	if not target_sprite:
+		print("该位置没有精灵，无法执行弃牌行动")
+		return
+	
+	# 判断拖到的精灵是己方还是敌方
+	if target_sprite.owner_player_id == GameManager.HUMAN_PLAYER_ID:
+		# 拖到己方精灵 → 该精灵就是执行者，直接弹出移动/攻击选择
+		_enter_discard_action_selection_phase(card, target_sprite, target_sprite)
+	else:
+		# 拖到敌方精灵 → 需要先选择己方精灵作为执行者
+		_enter_discard_action_selection_phase(card, null, target_sprite)
 
 # 获取指定屏幕位置的精灵
 func _get_sprite_at_position(screen_pos: Vector2) -> Sprite:
@@ -642,22 +749,32 @@ func _exit_card_use_phase():
 
 # 取消卡牌使用（返还卡牌）
 func _on_cancel_card_use():
-	if not card_use_state.active:
+	# 如果处于弃牌行动阶段，取消弃牌
+	if discard_action_state.active:
+		print("取消弃牌: ", discard_action_state.card.card_name if discard_action_state.card else "未知")
+		_exit_discard_action_phase()
 		return
 	
-	print("取消使用卡牌: ", card_use_state.card.card_name if card_use_state.card else "未知")
-	# 退出卡牌使用阶段（不消耗卡牌，卡牌保留在手牌中）
-	_exit_card_use_phase()
+	# 如果处于卡牌使用阶段，取消使用
+	if card_use_state.active:
+		print("取消使用卡牌: ", card_use_state.card.card_name if card_use_state.card else "未知")
+		# 退出卡牌使用阶段（不消耗卡牌，卡牌保留在手牌中）
+		_exit_card_use_phase()
 
 # 创建箭头指示器
 func _create_arrow_indicator():
-	if not dragging_card_ui or not card_arrow_container:
+	if not card_arrow_container:
 		return
+	
+	# 如果箭头已存在，先清除
+	if arrow_line:
+		_clear_arrow_indicator()
 	
 	# 创建箭头线条
 	arrow_line = Line2D.new()
 	arrow_line.width = 3.0
-	arrow_line.default_color = Color(1.0, 0.8, 0.0, 0.8)  # 橙色
+	# 颜色会在调用处设置（左键橙色，右键红色）
+	arrow_line.default_color = Color(1.0, 0.8, 0.0, 0.8)  # 默认橙色
 	arrow_line.antialiased = true
 	card_arrow_container.add_child(arrow_line)
 
@@ -669,6 +786,13 @@ func _clear_arrow_indicator():
 
 # 当前高亮的六边形坐标
 var highlighted_hex_coord: Vector2i = Vector2i(-1, -1)
+
+# 右键拖拽时的高亮状态
+var right_drag_highlight_state: Dictionary = {
+	"last_hex": Vector2i(-1, -1),
+	"highlighted_sprites": [],
+	"highlighted_hexes": []
+}
 
 # 清除卡牌目标高亮
 func _clear_card_target_highlight():
@@ -695,29 +819,44 @@ func _highlight_card_target_hex(hex_coord: Vector2i):
 func _process(_delta):
 	if dragging_card_ui and dragging_card:
 		_update_card_drag()
+	elif right_dragging_card_ui and right_dragging_card:
+		_update_card_drag()  # 右键拖拽也更新箭头
 
 # 更新卡牌拖动状态
 func _update_card_drag():
-	if not dragging_card_ui or not arrow_line:
+	if not arrow_line:
 		return
 	
-	# 获取卡牌中心位置
-	var card_global = dragging_card_ui.get_global_rect()
-	var card_center = card_global.get_center()
+	# 获取起始位置（卡牌中心）
+	var start_pos: Vector2
+	if dragging_card_ui:
+		var card_global = dragging_card_ui.get_global_rect()
+		start_pos = card_global.get_center()
+	elif right_dragging_card_ui:
+		var card_global = right_dragging_card_ui.get_global_rect()
+		start_pos = card_global.get_center()
+	else:
+		return  # 没有有效的拖拽状态
 	
 	# 获取鼠标位置
 	var mouse_pos = get_global_mouse_position()
 	
 	# 更新箭头线条
 	arrow_line.clear_points()
-	arrow_line.add_point(card_center)
+	arrow_line.add_point(start_pos)
 	arrow_line.add_point(mouse_pos)
 	
-	# 检测鼠标下的六边形
-	var hex_coord = _get_hex_at_screen_position(mouse_pos)
-	if hex_coord != Vector2i(-1, -1):
-		# 高亮该六边形
-		_highlight_card_target_hex(hex_coord)
+	# 左键拖拽：高亮目标
+	if dragging_card_ui and dragging_card:
+		# 检测鼠标下的六边形
+		var hex_coord = _get_hex_at_screen_position(mouse_pos)
+		if hex_coord != Vector2i(-1, -1):
+			# 高亮该六边形
+			_highlight_card_target_hex(hex_coord)
+	
+	# 右键拖拽：根据鼠标下的精灵类型显示不同反馈
+	elif right_dragging_card_ui and right_dragging_card:
+		_update_right_drag_feedback(mouse_pos)
 
 # 获取屏幕位置对应的六边形坐标
 func _get_hex_at_screen_position(screen_pos: Vector2) -> Vector2i:
@@ -787,3 +926,517 @@ func _get_hex_at_screen_position(screen_pos: Vector2) -> Vector2i:
 		return hex_coord
 	
 	return Vector2i(-1, -1)
+
+# 更新右键拖拽反馈（实时显示移动或攻击提示）
+func _update_right_drag_feedback(mouse_pos: Vector2):
+	if not game_manager or not game_manager.game_map:
+		return
+	
+	var hex_coord = _get_hex_at_screen_position(mouse_pos)
+	if hex_coord == Vector2i(-1, -1):
+		# 清除高亮
+		_clear_right_drag_highlight()
+		return
+	
+	# 如果还是同一个位置，不需要更新
+	if hex_coord == right_drag_highlight_state.last_hex:
+		return
+	
+	right_drag_highlight_state.last_hex = hex_coord
+	
+	# 查找该位置的精灵
+	var target_sprite = null
+	for sprite in game_manager.all_sprites:
+		if sprite.is_alive and sprite.hex_position == hex_coord:
+			target_sprite = sprite
+			break
+	
+	if not target_sprite:
+		# 没有精灵，清除高亮
+		_clear_right_drag_highlight()
+		return
+	
+	# 清除之前的高亮
+	_clear_right_drag_highlight()
+	
+	if not game_manager.terrain_renderer:
+		return
+	
+	# 拖到任意精灵上，都只高亮该精灵（不自动判断移动或攻击）
+	# 箭头保持红色，表示弃牌行动
+	if arrow_line:
+		arrow_line.default_color = Color(0.8, 0.2, 0.2, 0.8)  # 红色表示弃牌
+	
+	# 高亮拖拽到的精灵位置
+	game_manager.terrain_renderer.highlight_selected_position(hex_coord)
+
+
+# 清除右键拖拽高亮
+func _clear_right_drag_highlight():
+	if game_manager and game_manager.terrain_renderer:
+		game_manager.terrain_renderer.clear_selected_highlights()
+	
+	right_drag_highlight_state.highlighted_sprites.clear()
+	right_drag_highlight_state.highlighted_hexes.clear()
+	right_drag_highlight_state.last_hex = Vector2i(-1, -1)
+
+# ========== 弃牌行动相关函数 ==========
+
+# 进入弃牌行动选择阶段（拖到精灵后选择移动或攻击）
+# source_sprite: 执行行动的精灵（如果为null，需要先选择）
+# target_sprite: 拖拽到的精灵（可能是执行者，也可能是攻击目标）
+func _enter_discard_action_selection_phase(card: Card, source_sprite: Sprite, target_sprite: Sprite):
+	if not game_manager:
+		return
+	
+	# 设置弃牌行动状态
+	discard_action_state.active = true
+	discard_action_state.card = card
+	discard_action_state.action_type = ""  # 还未选择
+	discard_action_state.source_sprite = source_sprite  # 如果拖到己方精灵，直接设为执行者
+	discard_action_state.target_sprite = target_sprite  # 保存拖拽到的精灵
+	
+	# 显示取消按钮
+	if cancel_card_button:
+		cancel_card_button.visible = true
+		cancel_card_button.text = "取消弃牌"
+	
+	# 如果还没有执行者（拖到敌方精灵），先选择己方精灵
+	if not source_sprite:
+		print("进入弃牌行动选择阶段: ", card.card_name, " 拖到敌方精灵: ", target_sprite.sprite_name, " 请先选择己方精灵")
+		_highlight_friendly_sprites()
+	else:
+		# 如果已有执行者（拖到己方精灵），直接显示移动/攻击选择按钮
+		print("进入弃牌行动选择阶段: ", card.card_name, " 执行者: ", source_sprite.sprite_name)
+		_show_basic_action_buttons()
+
+# 进入弃牌行动阶段
+func _enter_discard_action_phase(card: Card):
+	if not game_manager:
+		return
+	
+	# 检查是否在游戏阶段
+	if game_manager.current_phase != GameManager.GamePhase.PLAYING:
+		print("只能在游戏阶段使用弃牌行动")
+		return
+	
+	# 设置弃牌行动状态
+	discard_action_state.active = true
+	discard_action_state.card = card
+	discard_action_state.action_type = ""
+	discard_action_state.source_sprite = null
+	
+	# 显示基本行动选择按钮
+	_show_basic_action_buttons()
+	
+	# 显示取消按钮
+	if cancel_card_button:
+		cancel_card_button.visible = true
+		cancel_card_button.text = "取消弃牌"
+	
+	print("进入弃牌行动阶段: ", card.card_name)
+
+# 显示基本行动选择按钮
+func _show_basic_action_buttons():
+	# 清除之前的按钮
+	_hide_basic_action_buttons()
+	
+	# 创建攻击按钮
+	var attack_button = Button.new()
+	attack_button.text = "攻击"
+	attack_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	attack_button.position = Vector2(-150, -100)
+	attack_button.size = Vector2(120, 50)
+	UIScaleManager.apply_scale_to_button(attack_button, 18)
+	attack_button.pressed.connect(_on_select_basic_attack)
+	add_child(attack_button)
+	basic_action_buttons["attack"] = attack_button
+	
+	# 创建移动按钮
+	var move_button = Button.new()
+	move_button.text = "移动"
+	move_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	move_button.position = Vector2(30, -100)
+	move_button.size = Vector2(120, 50)
+	UIScaleManager.apply_scale_to_button(move_button, 18)
+	move_button.pressed.connect(_on_select_basic_move)
+	add_child(move_button)
+	basic_action_buttons["move"] = move_button
+
+# 隐藏基本行动选择按钮
+func _hide_basic_action_buttons():
+	for button in basic_action_buttons.values():
+		if is_instance_valid(button):
+			button.queue_free()
+	basic_action_buttons.clear()
+
+# 选择基本攻击行动
+func _on_select_basic_attack():
+	if not discard_action_state.active or not game_manager:
+		return
+	
+	discard_action_state.action_type = "attack"
+	
+	# 隐藏行动选择按钮
+	_hide_basic_action_buttons()
+	
+	var source_sprite = discard_action_state.source_sprite
+	if not source_sprite:
+		# 如果还没有执行者，先选择己方精灵
+		print("请选择一个己方精灵，然后选择攻击目标")
+		_highlight_friendly_sprites()
+		return
+	
+	# 如果已有执行者，直接高亮该精灵攻击范围内的敌人
+	print("高亮 ", source_sprite.sprite_name, " 的攻击目标")
+	_highlight_attack_targets_for_discard_action(source_sprite)
+
+# 选择基本移动行动
+func _on_select_basic_move():
+	if not discard_action_state.active or not game_manager:
+		return
+	
+	discard_action_state.action_type = "move"
+	
+	# 隐藏行动选择按钮
+	_hide_basic_action_buttons()
+	
+	var source_sprite = discard_action_state.source_sprite
+	if not source_sprite:
+		# 如果还没有执行者，先选择己方精灵
+		print("请选择一个己方精灵进行移动")
+		_highlight_friendly_sprites()
+		return
+	
+	# 如果已有执行者，直接高亮该精灵的可移动位置
+	print("高亮 ", source_sprite.sprite_name, " 的可移动位置")
+	_highlight_move_targets_for_discard_action(source_sprite)
+
+# 高亮所有己方精灵（用于选择攻击者或移动者）
+func _highlight_friendly_sprites():
+	if not game_manager or not game_manager.terrain_renderer:
+		return
+	
+	_clear_discard_action_highlights()
+	
+	var friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
+	for sprite in friendly_sprites:
+		if sprite.is_alive:
+			game_manager.terrain_renderer.highlight_selected_position(sprite.hex_position)
+			discard_action_state.highlighted_sprites.append(sprite)
+	
+	print("高亮了 ", friendly_sprites.size(), " 个己方精灵（用于选择攻击者/移动者）")
+
+# 高亮可攻击指定目标的己方精灵（用于选择攻击者）
+func _highlight_attackable_friendly_sprites(target_sprite: Sprite):
+	if not game_manager or not game_manager.terrain_renderer:
+		return
+	
+	_clear_discard_action_highlights()
+	
+	# 获取目标精灵的玩家ID（确保只选择能攻击该目标的己方精灵）
+	var target_player_id = target_sprite.owner_player_id
+	
+	var friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
+	for sprite in friendly_sprites:
+		# 确保是己方精灵且能攻击目标
+		if sprite.is_alive and sprite.owner_player_id == GameManager.HUMAN_PLAYER_ID:
+			# 检查是否在攻击范围内（不同阵营才能攻击）
+			if target_player_id != GameManager.HUMAN_PLAYER_ID and sprite.is_in_attack_range(target_sprite.hex_position):
+				game_manager.terrain_renderer.highlight_selected_position(sprite.hex_position)
+				discard_action_state.highlighted_sprites.append(sprite)
+	
+	print("高亮了 ", discard_action_state.highlighted_sprites.size(), " 个可攻击 ", target_sprite.sprite_name, " 的己方精灵（攻击者选择）")
+
+# 处理弃牌行动目标选择
+func _handle_discard_action_target_selection(hex_coord: Vector2i):
+	if not discard_action_state.active or not game_manager:
+		return
+	
+	var action_type = discard_action_state.action_type
+	var source_sprite = discard_action_state.source_sprite
+	
+	# 如果还没有选择行动类型，说明还在选择执行者阶段
+	if action_type == "":
+		# 选择己方精灵作为执行者
+		_select_source_sprite_for_discard_action(hex_coord)
+		return
+	
+	if action_type == "attack":
+		# 攻击行动
+		if not source_sprite:
+			# 还未选择己方精灵，选择精灵
+			_select_source_sprite_for_discard_attack(hex_coord)
+		else:
+			# 已经选择了精灵，选择攻击目标
+			_select_attack_target_for_discard_action(hex_coord)
+	elif action_type == "move":
+		# 移动行动
+		if not source_sprite:
+			# 还未选择己方精灵，选择精灵
+			_select_source_sprite_for_discard_move(hex_coord)
+		else:
+			# 已经选择了精灵，选择移动目标
+			_select_move_target_for_discard_action(hex_coord)
+
+# 为弃牌行动选择己方精灵作为执行者（当拖到敌方精灵时）
+func _select_source_sprite_for_discard_action(hex_coord: Vector2i):
+	if not game_manager:
+		return
+	
+	# 查找该位置的己方精灵
+	var friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
+	var selected_sprite = null
+	
+	for sprite in friendly_sprites:
+		if sprite.is_alive and sprite.hex_position == hex_coord:
+			selected_sprite = sprite
+			break
+	
+	if not selected_sprite:
+		print("该位置没有己方精灵")
+		return
+	
+	# 设置执行者
+	discard_action_state.source_sprite = selected_sprite
+	print("选择了执行者: ", selected_sprite.sprite_name)
+	
+	# 显示移动/攻击选择按钮
+	_show_basic_action_buttons()
+
+# 为弃牌攻击选择己方精灵
+func _select_source_sprite_for_discard_attack(hex_coord: Vector2i):
+	if not game_manager:
+		return
+	
+	# 查找该位置的己方精灵
+	var friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
+	var selected_sprite = null
+	
+	for sprite in friendly_sprites:
+		if sprite.is_alive and sprite.hex_position == hex_coord:
+			selected_sprite = sprite
+			break
+	
+	if not selected_sprite:
+		print("该位置没有己方精灵")
+		return
+	
+	var target_sprite = discard_action_state.target_sprite
+	if not target_sprite:
+		print("错误：没有攻击目标")
+		return
+	
+	# 选择己方精灵后，高亮该精灵攻击范围内的所有敌人
+	discard_action_state.source_sprite = selected_sprite
+	print("选择了攻击精灵: ", selected_sprite.sprite_name, " 请选择攻击目标")
+	# 高亮可攻击的目标（所有在攻击范围内的敌人）
+	_highlight_attack_targets_for_discard_action(selected_sprite)
+
+# 为弃牌移动选择己方精灵
+func _select_source_sprite_for_discard_move(hex_coord: Vector2i):
+	if not game_manager:
+		return
+	
+	# 查找该位置的己方精灵
+	var friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
+	var selected_sprite = null
+	
+	for sprite in friendly_sprites:
+		if sprite.is_alive and sprite.hex_position == hex_coord:
+			selected_sprite = sprite
+			break
+	
+	if not selected_sprite:
+		print("该位置没有己方精灵")
+		return
+	
+	discard_action_state.source_sprite = selected_sprite
+	print("选择了移动精灵: ", selected_sprite.sprite_name)
+	
+	# 高亮可移动位置
+	_highlight_move_targets_for_discard_action(selected_sprite)
+
+# 高亮攻击目标（弃牌行动）- 高亮攻击范围内的所有敌人
+func _highlight_attack_targets_for_discard_action(source_sprite: Sprite):
+	if not game_manager or not game_manager.terrain_renderer:
+		return
+	
+	_clear_discard_action_highlights()
+	
+	# 获取攻击者所属玩家ID（确保只攻击敌方）
+	var attacker_player_id = source_sprite.owner_player_id
+	
+	# 获取攻击范围内的所有敌方精灵
+	var attack_range = source_sprite.attack_range
+	var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
+	
+	print("攻击者: ", source_sprite.sprite_name, " 玩家ID: ", attacker_player_id, " 攻击范围: ", attack_range)
+	
+	for sprite in game_manager.all_sprites:
+		# 确保只高亮敌方精灵：不同阵营且存活
+		if not sprite.is_alive:
+			continue
+		
+		# 严格检查阵营：必须是不同玩家
+		if sprite.owner_player_id == attacker_player_id:
+			continue  # 跳过同阵营精灵
+		
+		# 检查是否在攻击范围内
+		if sprite.hex_position in range_hexes:
+			# 检查高度限制
+			var attacker_terrain = game_manager.game_map.get_terrain(source_sprite.hex_position)
+			var target_terrain = game_manager.game_map.get_terrain(sprite.hex_position)
+			var attacker_level = attacker_terrain.height_level if attacker_terrain else 1
+			var target_level = target_terrain.height_level if target_terrain else 1
+			
+			if game_manager.terrain_manager.can_attack_height(attacker_level, target_level, source_sprite.attack_height_limit):
+				game_manager.terrain_renderer.highlight_selected_position(sprite.hex_position)
+				discard_action_state.highlighted_sprites.append(sprite)
+				print("  高亮敌人: ", sprite.sprite_name, " 玩家ID: ", sprite.owner_player_id, " 位置: ", sprite.hex_position)
+	
+	print("高亮了 ", discard_action_state.highlighted_sprites.size(), " 个可攻击的敌人（攻击者: ", source_sprite.sprite_name, " 玩家ID: ", attacker_player_id, ")")
+
+# 高亮移动目标（弃牌行动）
+func _highlight_move_targets_for_discard_action(source_sprite: Sprite):
+	if not game_manager or not game_manager.terrain_renderer:
+		return
+	
+	_clear_discard_action_highlights()
+	
+	# 获取移动范围内的所有可移动位置
+	var movement = source_sprite.remaining_movement
+	var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, movement)
+	
+	for hex_pos in range_hexes:
+		if game_manager.terrain_manager.can_move_to(source_sprite, hex_pos):
+			game_manager.terrain_renderer.highlight_selected_position(hex_pos)
+			discard_action_state.highlighted_hexes.append(hex_pos)
+	
+	print("高亮了 ", discard_action_state.highlighted_hexes.size(), " 个可移动位置")
+
+# 选择攻击目标（弃牌行动）
+func _select_attack_target_for_discard_action(hex_coord: Vector2i):
+	if not discard_action_state.source_sprite:
+		return
+	
+	# 查找该位置的敌方精灵
+	var target_sprite = null
+	for sprite in discard_action_state.highlighted_sprites:
+		if sprite.hex_position == hex_coord:
+			target_sprite = sprite
+			break
+	
+	if not target_sprite:
+		print("未选择有效的攻击目标")
+		return
+	
+	# 提交弃牌攻击行动
+	_submit_discard_attack_action(target_sprite)
+
+# 选择移动目标（弃牌行动）
+func _select_move_target_for_discard_action(hex_coord: Vector2i):
+	if not discard_action_state.source_sprite:
+		return
+	
+	# 检查是否是可移动的位置
+	if hex_coord not in discard_action_state.highlighted_hexes:
+		print("无法移动到该位置")
+		return
+	
+	# 提交弃牌移动行动
+	_submit_discard_move_action(hex_coord)
+
+# 提交弃牌攻击行动
+func _submit_discard_attack_action(target_sprite: Sprite):
+	if not game_manager or not discard_action_state.card or not discard_action_state.source_sprite:
+		return
+	
+	# 从手牌中移除卡牌
+	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
+	if hand_manager:
+		hand_manager.remove_card(discard_action_state.card, "discarded")
+	
+	# 添加基本攻击行动
+	var action = ActionResolver.Action.new(
+		GameManager.HUMAN_PLAYER_ID,
+		ActionResolver.ActionType.ATTACK,
+		discard_action_state.source_sprite,
+		target_sprite,
+		null,  # 基本行动不使用卡牌
+		{"is_basic_action": true}  # 标记为基本行动
+	)
+	game_manager.action_resolver.add_action(
+		action.player_id,
+		action.action_type,
+		action.sprite,
+		action.target,
+		action.card,
+		action.data
+	)
+	
+	print("提交弃牌攻击行动: ", discard_action_state.source_sprite.sprite_name, " -> ", target_sprite.sprite_name)
+	
+	# 退出弃牌行动阶段
+	_exit_discard_action_phase()
+
+# 提交弃牌移动行动
+func _submit_discard_move_action(target_pos: Vector2i):
+	if not game_manager or not discard_action_state.card or not discard_action_state.source_sprite:
+		return
+	
+	# 从手牌中移除卡牌
+	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
+	if hand_manager:
+		hand_manager.remove_card(discard_action_state.card, "discarded")
+	
+	# 添加基本移动行动
+	var action = ActionResolver.Action.new(
+		GameManager.HUMAN_PLAYER_ID,
+		ActionResolver.ActionType.MOVE,
+		discard_action_state.source_sprite,
+		target_pos,
+		null,  # 基本行动不使用卡牌
+		{"is_basic_action": true}  # 标记为基本行动
+	)
+	game_manager.action_resolver.add_action(
+		action.player_id,
+		action.action_type,
+		action.sprite,
+		action.target,
+		action.card,
+		action.data
+	)
+	
+	print("提交弃牌移动行动: ", discard_action_state.source_sprite.sprite_name, " -> ", target_pos)
+	
+	# 退出弃牌行动阶段
+	_exit_discard_action_phase()
+
+# 退出弃牌行动阶段
+func _exit_discard_action_phase():
+	# 清除高亮
+	_clear_discard_action_highlights()
+	
+	# 隐藏按钮
+	_hide_basic_action_buttons()
+	if cancel_card_button:
+		cancel_card_button.visible = false
+		cancel_card_button.text = "取消使用"
+	
+	# 重置状态
+	discard_action_state.active = false
+	discard_action_state.card = null
+	discard_action_state.action_type = ""
+	discard_action_state.source_sprite = null
+	discard_action_state.target_sprite = null
+	
+	print("退出弃牌行动阶段")
+
+# 清除弃牌行动高亮
+func _clear_discard_action_highlights():
+	if game_manager and game_manager.terrain_renderer:
+		game_manager.terrain_renderer.clear_selected_highlights()
+	
+	discard_action_state.highlighted_sprites.clear()
+	discard_action_state.highlighted_hexes.clear()
