@@ -98,25 +98,69 @@ func _handle_click_in_viewport(viewport_pos: Vector2):
 	var from = camera.project_ray_origin(viewport_pos)
 	var ray_dir = camera.project_ray_normal(viewport_pos)
 	
-	# 射线与地图平面（Y=0）相交计算
 	var plane_normal = Vector3(0, 1, 0)
-	var plane_point = Vector3(0, 0, 0)
 	var denom = plane_normal.dot(ray_dir)
 	
 	if abs(denom) < 0.0001:
 		print("射线与地图平面平行")
 		return
-	var t = (plane_point - from).dot(plane_normal) / denom
-	if t < 0:
+	
+	# 首先尝试检测射线与地形顶部平面的交点
+	# 遍历所有可能的地形高度（1级到3级），找到距离摄像机最近的匹配地形
+	var best_hex_coord: Vector2i = Vector2i(-1, -1)
+	var best_t: float = INF
+	
+	# 检测所有地形高度平面
+	for level in range(1, 4):  # 1, 2, 3
+		var terrain_height = _get_terrain_height_for_level(level)
+		var plane_point = Vector3(0, terrain_height, 0)
+		var t = (plane_point - from).dot(plane_normal) / denom
+		
+		if t >= 0 and t < best_t:  # 射线与这个高度的平面相交，且比之前的更近
+			var intersection_pos = from + ray_dir * t
+			# 将交点投影到地面（Y=0）来计算六边形坐标
+			var ground_pos = Vector3(intersection_pos.x, 0, intersection_pos.z)
+			var hex_coord = HexGrid.world_to_hex(ground_pos, game_map.hex_size, game_map.map_height)
+			
+			# 检查该坐标是否有地形，且地形高度是否匹配
+			if game_map._is_valid_hex(hex_coord):
+				var terrain = game_map.get_terrain(hex_coord)
+				if terrain and terrain.height_level == level:
+					# 找到匹配的地形，记录这个结果（选择最近的）
+					best_t = t
+					best_hex_coord = hex_coord
+	
+	# 如果找到了匹配的地形顶部，使用它
+	if best_hex_coord != Vector2i(-1, -1):
+		print("有效点击（地形顶部）：", best_hex_coord)
+		hex_clicked.emit(best_hex_coord)
+		return
+	
+	# 如果没有找到匹配的地形顶部，回退到地面检测
+	var ground_plane_point = Vector3(0, 0, 0)
+	var ground_t = (ground_plane_point - from).dot(plane_normal) / denom
+	
+	if ground_t < 0:
 		print("射线方向错误（指向摄像机后方）")
 		return
 	
-	# 计算交点并转换为六边形坐标
-	var world_pos = from + ray_dir * t
-	var hex_coord = HexGrid.world_to_hex(world_pos, game_map.hex_size, game_map.map_height)
+	var ground_pos = from + ray_dir * ground_t
+	var hex_coord = HexGrid.world_to_hex(ground_pos, game_map.hex_size, game_map.map_height)
 	
 	if game_map._is_valid_hex(hex_coord):
-		print("有效点击：", hex_coord)
+		print("有效点击（地面）：", hex_coord)
 		hex_clicked.emit(hex_coord)
 	else:
 		print("无效坐标：", hex_coord)
+
+# 获取地形高度（与TerrainRenderer保持一致）
+func _get_terrain_height_for_level(level: int) -> float:
+	match level:
+		1:
+			return 3.0  # 1级地形高度
+		2:
+			return 6.0  # 2级地形高度
+		3:
+			return 12.0  # 3级地形高度
+		_:
+			return 3.0

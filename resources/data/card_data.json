@@ -99,6 +99,136 @@
       "effect": "在自身精灵相邻1格创建1格3级岩石地形，持续2回合",
       "target_type": "adjacent_tile",
       "range_requirement": "adjacent"
+    },
+    {
+      "id": "C11",
+      "name": "地陷",
+      "attributes": ["rock"],
+      "energy_cost": 1,
+      "type": "terrain",
+      "effect": "将目标地形降低1级（最低1级）",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C12",
+      "name": "地陷深坑",
+      "attributes": ["rock"],
+      "energy_cost": 2,
+      "type": "terrain",
+      "effect": "将目标地形降低2级（最低1级）",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C13",
+      "name": "地隆起",
+      "attributes": ["rock"],
+      "energy_cost": 1,
+      "type": "terrain",
+      "effect": "将目标地形抬高1级（最高3级）",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C14",
+      "name": "地隆起高峰",
+      "attributes": ["rock"],
+      "energy_cost": 2,
+      "type": "terrain",
+      "effect": "将目标地形抬高2级（最高3级）",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C15",
+      "name": "水流涌动",
+      "attributes": ["water"],
+      "energy_cost": 2,
+      "type": "terrain",
+      "effect": "在指定位置创建1格水流地形，持续5回合",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C16",
+      "name": "水流蔓延",
+      "attributes": ["water"],
+      "energy_cost": 3,
+      "type": "terrain",
+      "effect": "在指定位置创建1格水流地形，持续4回合，可多次使用创建多格",
+      "target_type": "adjacent_tile",
+      "range_requirement": "adjacent_2_tiles"
+    },
+    {
+      "id": "C17",
+      "name": "湖泊形成",
+      "attributes": ["water"],
+      "energy_cost": 4,
+      "type": "terrain",
+      "effect": "在指定位置创建1格水流地形（永久），同时将地形抬高1级（最高3级）",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C18",
+      "name": "急流冲刷",
+      "attributes": ["water"],
+      "energy_cost": 2,
+      "type": "terrain",
+      "effect": "在指定位置创建1格水流地形，持续3回合，同时将地形降低1级（最低1级）",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C19",
+      "name": "地势平缓",
+      "attributes": ["rock"],
+      "energy_cost": 1,
+      "type": "terrain",
+      "effect": "将目标地形调整为1级",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C20",
+      "name": "山峰形成",
+      "attributes": ["rock"],
+      "energy_cost": 3,
+      "type": "terrain",
+      "effect": "将目标地形抬高至3级，持续6回合",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C21",
+      "name": "深谷挖掘",
+      "attributes": ["rock"],
+      "energy_cost": 3,
+      "type": "terrain",
+      "effect": "将目标地形降低至1级，持续6回合",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C22",
+      "name": "水岩结合",
+      "attributes": ["water", "rock"],
+      "energy_cost": 3,
+      "type": "terrain",
+      "effect": "在指定位置创建1格水流地形，同时将地形抬高1级（最高3级），持续4回合",
+      "target_type": "adjacent_tile",
+      "range_requirement": "within_attack_range"
+    },
+    {
+      "id": "C23",
+      "name": "水流通道",
+      "attributes": ["water"],
+      "energy_cost": 2,
+      "type": "terrain",
+      "effect": "在自身精灵相邻1格创建1格水流地形，如果目标地形已存在，将其延长2回合持续时间",
+      "target_type": "adjacent_tile",
+      "range_requirement": "adjacent"
     }
   ]
 }

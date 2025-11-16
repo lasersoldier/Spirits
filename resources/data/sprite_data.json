@@ -8,6 +8,7 @@
       "base_movement": 2,
       "vision_range": 2,
       "attack_range": 1,
+      "cast_range": 2,
       "attack_height_limit": "same_or_high_to_low",
       "special_mechanisms": [],
       "model_path": "res://models/sprites/F01_赤焰崽.glb"
@@ -20,8 +21,9 @@
       "base_movement": 3,
       "vision_range": 4,
       "attack_range": 2,
+      "cast_range": 3,
       "attack_height_limit": "none",
-      "special_mechanisms": ["flight"],
+      "special_mechanisms": ["flight", "hawk_eye"],
       "model_path": "res://models/sprites/W01_风羽雀.glb"
     },
     {
@@ -32,6 +34,7 @@
       "base_movement": 2,
       "vision_range": 2,
       "attack_range": 2,
+      "cast_range": 2,
       "attack_height_limit": "same_or_low_to_high",
       "special_mechanisms": [],
       "model_path": "res://models/sprites/S01_水滴滴.glb"
@@ -44,8 +47,9 @@
       "base_movement": 1,
       "vision_range": 2,
       "attack_range": 1,
+      "cast_range": 4,
       "attack_height_limit": "none",
-      "special_mechanisms": ["terrain_modify"],
+      "special_mechanisms": ["terrain_modify", "burrow"],
       "model_path": "res://models/sprites/R01_石疙瘩.glb"
     }
   ]

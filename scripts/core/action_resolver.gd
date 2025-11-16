@@ -78,12 +78,11 @@ func resolve_all_actions():
 	# 按优先级顺序结算
 	_resolve_actions(effect_actions)
 	_resolve_actions(terrain_actions)
+	# 地形变化执行后，立即应用到地图（这样后续的移动可以正确检查路径高度）
+	terrain_manager.resolve_terrain_changes()
 	_resolve_actions(attack_actions)
 	_resolve_actions(move_actions)
 	_resolve_actions(other_actions)
-	
-	# 处理地形变化冲突
-	terrain_manager.resolve_terrain_changes()
 	
 	# 清空行动列表
 	clear_actions()
@@ -134,15 +133,15 @@ func _resolve_terrain_action(action: Action) -> Dictionary:
 	if not action.card or not action.target is Vector2i:
 		return {"success": false, "message": "无效的地形行动"}
 	
-	# 地形变化通过terrain_manager处理（用于冲突检测）
-	var terrain_type = card_interface._get_terrain_type_from_card(action.card)
-	terrain_manager.request_terrain_change(action.player_id, action.target, terrain_type, -1, 3)
+	# 使用 apply_card_effect 统一处理地形效果（包括高度修改）
+	var result = card_interface.apply_card_effect(action.card, action.sprite, action.target, game_map, terrain_manager)
 	
 	# 消耗能量
-	energy_manager.use_card(action.player_id, action.card.energy_cost)
-	action.card.use()
+	if result.success:
+		energy_manager.use_card(action.player_id, action.card.energy_cost)
+		action.card.use()
 	
-	return {"success": true, "message": "地形变化请求已提交"}
+	return result
 
 # 结算攻击行动
 func _resolve_attack_action(action: Action) -> Dictionary:
@@ -153,6 +152,36 @@ func _resolve_attack_action(action: Action) -> Dictionary:
 	var is_basic_action = action.data.get("is_basic_action", false)
 	var player_id = action.player_id
 	
+	# 如果是基本行动（弃牌攻击），使用 execute_attack
+	if is_basic_action:
+		return execute_attack(action.sprite, target, is_basic_action, player_id, action.card)
+	
+	# 如果是卡牌攻击，使用 apply_card_effect 处理（包括附带的地形修改效果）
+	if action.card:
+		# 检查攻击范围
+		if not action.sprite.is_in_attack_range(target.hex_position):
+			return {"success": false, "message": "目标不在攻击范围内"}
+		
+		# 检查高度限制
+		var attacker_terrain = game_map.get_terrain(action.sprite.hex_position)
+		var target_terrain = game_map.get_terrain(target.hex_position)
+		var attacker_level = attacker_terrain.height_level if attacker_terrain else 1
+		var target_level = target_terrain.height_level if target_terrain else 1
+		
+		if not terrain_manager.can_attack_height(attacker_level, target_level, action.sprite.attack_height_limit):
+			return {"success": false, "message": "高度限制：无法攻击该目标"}
+		
+		# 使用 apply_card_effect 处理卡牌效果（包括攻击和附带的地形修改）
+		var result = card_interface.apply_card_effect(action.card, action.sprite, target, game_map, terrain_manager)
+		
+		# 消耗能量
+		if result.success:
+			energy_manager.use_card(player_id, action.card.energy_cost)
+			action.card.use()
+		
+		return result
+	
+	# 默认使用 execute_attack
 	return execute_attack(action.sprite, target, is_basic_action, player_id, action.card)
 
 # 执行攻击（公共方法，可直接调用）
@@ -199,16 +228,51 @@ func _resolve_move_action(action: Action) -> Dictionary:
 
 # 执行移动（公共方法，可直接调用）
 func execute_move(sprite: Sprite, target_pos: Vector2i, is_basic_action: bool = false, player_id: int = -1, card: Card = null) -> Dictionary:
-	# 检查是否可以移动到目标位置
-	if not terrain_manager.can_move_to(sprite, target_pos):
+	# 检查路径高度有效性
+	var path_check = terrain_manager.check_path_height_validity(sprite, sprite.hex_position, target_pos)
+	
+	# 确定实际移动目标（如果路径被阻挡，使用最后一个有效位置）
+	var actual_target_pos = path_check.final_position
+	
+	# 如果最终位置与起点相同，检查是否是路径阻挡导致的
+	if actual_target_pos == sprite.hex_position:
+		if path_check.valid:
+			# 路径有效但位置相同，说明是原地停留，返回失败
+			return {"success": false, "message": "无法移动到该位置"}
+		else:
+			# 路径被阻挡且停在起点，允许移动但移动距离为0
+			# 这样后续移动可以从正确位置开始计算
+			var old_pos = sprite.hex_position
+			sprite.move_to(actual_target_pos)  # 虽然位置没变，但确保状态更新
+			
+			if is_basic_action:
+				print("执行移动（基本行动，不消耗移动力）: ", sprite.sprite_name, " 尝试移动到 ", target_pos, " 但路径被高度阻挡，停在起点 ", actual_target_pos)
+			else:
+				# 卡牌行动：即使停在起点，也消耗1点移动力（尝试移动的代价）
+				var movement_cost = 1
+				if sprite.remaining_movement < movement_cost:
+					# 如果移动力不足，恢复位置并返回失败
+					sprite.move_to(old_pos)
+					return {"success": false, "message": "移动力不足（尝试移动需要 1，剩余 " + str(sprite.remaining_movement) + "）"}
+				sprite.consume_movement(movement_cost)
+				print("执行移动: ", sprite.sprite_name, " 尝试移动到 ", target_pos, " 但路径被高度阻挡，停在起点 ", actual_target_pos, " 消耗移动力: ", movement_cost, " 剩余移动力: ", sprite.remaining_movement)
+			
+			# 更新地形效果（使用起点位置）
+			var terrain_effects = terrain_manager.apply_terrain_effects(sprite, actual_target_pos)
+			sprite.update_terrain_effects(terrain_effects)
+			
+			return {"success": true, "message": "路径被高度阻挡，停在起点"}
+	
+	# 检查实际目标位置是否有地形
+	if not terrain_manager.can_move_to(sprite, actual_target_pos):
 		return {"success": false, "message": "无法移动到该位置"}
 	
-	# 检查移动距离
-	var distance = HexGrid.hex_distance(sprite.hex_position, target_pos)
+	# 检查移动距离（使用实际目标位置）
+	var distance = HexGrid.hex_distance(sprite.hex_position, actual_target_pos)
 	var movement_cost = distance
 	
-	# 应用地形效果
-	var terrain_effects = terrain_manager.apply_terrain_effects(sprite, target_pos)
+	# 应用地形效果（使用实际目标位置）
+	var terrain_effects = terrain_manager.apply_terrain_effects(sprite, actual_target_pos)
 	if terrain_effects.movement_bonus > 0:
 		movement_cost = max(1, movement_cost - terrain_effects.movement_bonus)
 	if terrain_effects.movement_cost_multiplier > 1.0:
@@ -227,9 +291,14 @@ func execute_move(sprite: Sprite, target_pos: Vector2i, is_basic_action: bool = 
 		if sprite.remaining_movement < movement_cost:
 			return {"success": false, "message": "移动力不足（需要 " + str(movement_cost) + "，剩余 " + str(sprite.remaining_movement) + "）"}
 	
-	# 执行移动
+	# 执行移动（使用实际目标位置）
 	var old_pos = sprite.hex_position
-	sprite.move_to(target_pos)
+	sprite.move_to(actual_target_pos)
+	
+	# 如果路径被阻挡，在消息中说明
+	if not path_check.valid:
+		print("路径被高度阻挡，精灵移动到最后一个有效位置: ", actual_target_pos, " (原目标: ", target_pos, ", 阻挡位置: ", path_check.blocked_at, ")")
+		print("  调试：起点位置 ", old_pos, " -> 实际到达位置 ", actual_target_pos, " (后续移动将从该位置开始)")
 	
 	# 只有非基本行动才消耗移动力
 	if not is_basic_action:
@@ -239,8 +308,14 @@ func execute_move(sprite: Sprite, target_pos: Vector2i, is_basic_action: bool = 
 	
 	if is_basic_action:
 		print("执行移动（基本行动，不消耗移动力）: ", sprite.sprite_name, " 从 ", old_pos, " 移动到 ", sprite.hex_position, " 移动距离: ", movement_cost, " 移动力保持: ", sprite.remaining_movement, "/", sprite.base_movement)
+		if not path_check.valid:
+			print("  注意：原目标位置 ", target_pos, " 因高度阻挡无法到达，已移动到 ", sprite.hex_position)
+			print("  调试：精灵当前位置已更新为 ", sprite.hex_position, "，后续移动将从该位置开始计算")
 	else:
 		print("执行移动: ", sprite.sprite_name, " 从 ", old_pos, " 移动到 ", sprite.hex_position, " 消耗移动力: ", movement_cost, " 剩余移动力: ", sprite.remaining_movement)
+		if not path_check.valid:
+			print("  注意：原目标位置 ", target_pos, " 因高度阻挡无法到达，已移动到 ", sprite.hex_position)
+			print("  调试：精灵当前位置已更新为 ", sprite.hex_position, "，后续移动将从该位置开始计算")
 	
 	# 如果是卡牌行动，消耗能量（基本行动不消耗）
 	if card and not is_basic_action and player_id >= 0:

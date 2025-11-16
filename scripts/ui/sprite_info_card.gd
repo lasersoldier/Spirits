@@ -38,7 +38,7 @@ func _ready():
 	
 	# 创建资料卡面板（居中显示）
 	info_panel = Panel.new()
-	var card_size = Vector2(300, 450)  # 增加高度以容纳描述
+	var card_size = Vector2(300, 480)  # 增加高度以容纳施法范围
 	info_panel.custom_minimum_size = card_size
 	info_panel.size = card_size
 	
@@ -152,10 +152,20 @@ func _ready():
 	attack_range_label.add_theme_color_override("font_color", Color.WHITE)
 	info_panel.add_child(attack_range_label)
 	
+	# 创建施法范围标签
+	var cast_range_label = Label.new()
+	cast_range_label.name = "CastRangeLabel"
+	cast_range_label.text = "施法范围: 0"
+	cast_range_label.position = Vector2(10, 270)
+	cast_range_label.size = Vector2(280, 25)
+	cast_range_label.add_theme_font_size_override("font_size", 16)
+	cast_range_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))  # 浅蓝色，区分于攻击距离
+	info_panel.add_child(cast_range_label)
+	
 	# 创建视野范围标签
 	vision_range_label = Label.new()
 	vision_range_label.text = "视野范围: 0"
-	vision_range_label.position = Vector2(10, 270)
+	vision_range_label.position = Vector2(10, 300)
 	vision_range_label.size = Vector2(280, 25)
 	vision_range_label.add_theme_font_size_override("font_size", 16)
 	vision_range_label.add_theme_color_override("font_color", Color.WHITE)
@@ -164,7 +174,7 @@ func _ready():
 	# 创建位置标签
 	position_label = Label.new()
 	position_label.text = "位置: (0, 0)"
-	position_label.position = Vector2(10, 300)
+	position_label.position = Vector2(10, 330)
 	position_label.size = Vector2(280, 25)
 	position_label.add_theme_font_size_override("font_size", 16)
 	position_label.add_theme_color_override("font_color", Color.WHITE)
@@ -173,7 +183,7 @@ func _ready():
 	# 创建玩家标签
 	player_label = Label.new()
 	player_label.text = "玩家: 0"
-	player_label.position = Vector2(10, 330)
+	player_label.position = Vector2(10, 360)
 	player_label.size = Vector2(280, 25)
 	player_label.add_theme_font_size_override("font_size", 16)
 	player_label.add_theme_color_override("font_color", Color.WHITE)
@@ -274,6 +284,12 @@ func _update_info():
 	if attack_range_label:
 		attack_range_label.text = "攻击距离: %d" % current_sprite.attack_range
 		print("  攻击距离: ", attack_range_label.text)
+	
+	# 更新施法范围
+	var cast_range_label = info_panel.get_node_or_null("CastRangeLabel") as Label
+	if cast_range_label:
+		cast_range_label.text = "施法范围: %d" % current_sprite.cast_range
+		print("  施法范围: ", cast_range_label.text)
 	
 	# 更新视野范围
 	if vision_range_label:

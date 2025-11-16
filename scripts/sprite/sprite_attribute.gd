@@ -17,12 +17,16 @@ var base_hp: int = 0
 var base_movement: int = 0
 var vision_range: int = 0
 var attack_range: int = 0
+var cast_range: int = 0  # 施法范围（用于卡牌使用）
 
 # 攻击高度限制
 var attack_height_limit: String = "none"  # none, same_or_high_to_low, same_or_low_to_high, same_only
 
 # 特殊机制标签
 var special_mechanisms: Array[String] = []
+
+# 视野特殊属性常量
+const VISION_ABILITY_HAWK_EYE: String = "hawk_eye"  # 鹰眼：无视高度阻挡
 
 # 精灵ID和名称
 var sprite_id: String = ""
@@ -46,6 +50,7 @@ func _load_from_data(data: Dictionary):
 	base_movement = data.get("base_movement", 0)
 	vision_range = data.get("vision_range", 0)
 	attack_range = data.get("attack_range", 0)
+	cast_range = data.get("cast_range", attack_range)  # 默认使用攻击范围
 	attack_height_limit = data.get("attack_height_limit", "none")
 	# 确保 special_mechanisms 是 Array[String] 类型
 	var mechanisms_raw = data.get("special_mechanisms", [])
@@ -63,6 +68,14 @@ func _load_from_data(data: Dictionary):
 # 检查是否具有特殊机制
 func has_mechanism(mechanism: String) -> bool:
 	return mechanism in special_mechanisms
+
+# 检查是否具有特定视野能力
+func has_vision_ability(ability: String) -> bool:
+	return has_mechanism(ability)
+
+# 检查是否可以忽略高度阻挡（目前只有【鹰眼】）
+func can_ignore_height_blocking() -> bool:
+	return has_vision_ability(VISION_ABILITY_HAWK_EYE)
 
 # 检查是否是岩属性（用于地形修改权限）
 func is_rock_attribute() -> bool:
@@ -106,8 +119,12 @@ func _generate_description() -> String:
 	var mechanisms_desc: Array[String] = []
 	if has_mechanism("flight"):
 		mechanisms_desc.append("飞行")
+	if has_mechanism("burrow"):
+		mechanisms_desc.append("钻地")
 	if has_mechanism("terrain_modify"):
 		mechanisms_desc.append("地形修改")
+	if has_vision_ability(VISION_ABILITY_HAWK_EYE):
+		mechanisms_desc.append("鹰眼")
 	
 	if mechanisms_desc.size() > 0:
 		desc_parts.append("，具有" + "、".join(mechanisms_desc) + "能力")

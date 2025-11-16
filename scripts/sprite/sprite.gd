@@ -110,18 +110,20 @@ func is_in_vision_range(target_position: Vector2i) -> bool:
 	var distance = HexGrid.hex_distance(hex_position, target_position)
 	return distance <= vision_range
 
-# 获取可移动到的位置列表（简化版，实际需要路径规划）
+# 获取可移动到的位置列表（考虑路径高度限制）
 func get_movable_positions(game_map: GameMap, terrain_manager: TerrainManager) -> Array[Vector2i]:
 	var movable: Array[Vector2i] = []
-	var neighbors = HexGrid.get_neighbors(hex_position)
+	# 获取移动范围内的所有位置
+	var range_hexes = HexGrid.get_hexes_in_range(hex_position, base_movement)
 	
-	for neighbor in neighbors:
+	for hex_pos in range_hexes:
 		# 使用坐标白名单检查（必须有实际地形板块）
-		if not game_map.is_valid_hex_with_terrain(neighbor):
+		if not game_map.is_valid_hex_with_terrain(hex_pos):
 			continue
 		
-		if terrain_manager.can_move_to(self, neighbor):
-			movable.append(neighbor)
+		# can_move_to 已经包含了路径高度检查
+		if terrain_manager.can_move_to(self, hex_pos):
+			movable.append(hex_pos)
 	
 	return movable
 
@@ -140,4 +142,3 @@ func get_attackable_positions(game_map: GameMap) -> Array[Vector2i]:
 # 更新地形效果
 func update_terrain_effects(effects: Dictionary):
 	current_terrain_effects = effects
-

@@ -293,20 +293,45 @@ func _set_terrain(hex_coord: Vector2i, terrain: TerrainTile):
 	terrain_changed.emit(hex_coord, terrain)
 
 # 修改地形（用于卡牌效果等）
-func modify_terrain(hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_level: int = -1, duration: int = -1) -> bool:
+func modify_terrain(hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_level: int = -1, duration: int = -1, height_delta: int = 0) -> bool:
 	if not _is_valid_hex(hex_coord):
+		push_warning("GameMap: 无效坐标: " + str(hex_coord))
 		return false
 	
 	var terrain = get_terrain(hex_coord)
+	var final_height = 1
+	
 	if not terrain:
-		terrain = TerrainTile.new(hex_coord, new_type, new_level if new_level > 0 else 1)
+		# 创建新地形
+		if height_delta != 0:
+			# 相对高度修改（新地形默认1级）
+			final_height = clamp(1 + height_delta, 1, 3)
+		elif new_level > 0:
+			final_height = clamp(new_level, 1, 3)
+		else:
+			final_height = 1
+		
+		terrain = TerrainTile.new(hex_coord, new_type, final_height)
 		_set_terrain(hex_coord, terrain)
 	else:
+		# 修改现有地形
+		if height_delta != 0:
+			# 相对高度修改
+			final_height = clamp(terrain.height_level + height_delta, 1, 3)
+		elif new_level > 0:
+			# 绝对高度设置
+			final_height = clamp(new_level, 1, 3)
+		else:
+			# 保持当前高度
+			final_height = terrain.height_level
+		
 		terrain.terrain_type = new_type
-		if new_level > 0:
-			terrain.height_level = new_level
+		terrain.height_level = final_height
 		if duration >= 0:
 			terrain.effect_duration = duration
+		
+		# 触发地形变化信号，让渲染器更新
+		_set_terrain(hex_coord, terrain)
 	
 	return true
 

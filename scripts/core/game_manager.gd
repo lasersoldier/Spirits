@@ -49,6 +49,7 @@ var contest_point_manager: ContestPointManager
 var victory_manager: VictoryManager
 var ai_players: Dictionary = {}  # key: player_id, value: AIPlayer
 var state_sync: SpriteStateSyncInterface
+var fog_of_war_manager: FogOfWarManager
 
 # 所有精灵列表
 var all_sprites: Array[Sprite] = []
@@ -123,6 +124,9 @@ func _initialize_systems():
 	# 初始化状态同步
 	state_sync = SpriteStateSyncInterface.new()
 	
+	# 初始化战争迷雾管理器
+	fog_of_war_manager = FogOfWarManager.new()
+	
 	# 连接信号
 	_connect_signals()
 
@@ -195,6 +199,8 @@ func deploy_human_player(selected_sprite_ids: Array[String], deploy_positions: A
 	var sprites = sprite_deploy.deploy_human_player(HUMAN_PLAYER_ID, selected_sprite_ids, deploy_positions)
 	all_sprites.append_array(sprites)
 	_connect_sprite_signals(sprites)
+	# 部署后更新视野
+	update_all_players_vision()
 
 # 部署阶段：AI玩家部署
 func deploy_ai_players():
@@ -207,12 +213,17 @@ func deploy_ai_players():
 		var difficulty = AIPlayer.Difficulty.NORMAL
 		var ai_player = AIPlayer.new(ai_id, difficulty, game_map, sprites, hand_managers[ai_id], energy_manager, contest_point_manager)
 		ai_players[ai_id] = ai_player
+	# AI部署后更新视野
+	update_all_players_vision()
 
 # 连接精灵信号
 func _connect_sprite_signals(sprites: Array[Sprite]):
 	for sprite in sprites:
 		sprite.sprite_died.connect(_on_sprite_died.bind(sprite))
-		sprite.bounty_acquired.connect(_on_sprite_bounty_acquired.bind(sprite))
+		# 注意：bounty_acquired信号会传递sprite参数，不需要bind
+		sprite.bounty_acquired.connect(_on_sprite_bounty_acquired)
+		# 连接精灵移动信号以更新视野
+		sprite.sprite_moved.connect(_on_sprite_vision_changed)
 
 # 处理精灵部署事件（渲染精灵）
 func _on_sprite_deployed(sprite: Sprite, _player_id: int, _position: Vector2i, renderer: SpriteRenderer):
@@ -224,6 +235,9 @@ func _on_sprite_deployed(sprite: Sprite, _player_id: int, _position: Vector2i, r
 func start_playing_phase():
 	current_phase = GamePhase.PLAYING
 	phase_changed.emit(current_phase)
+	
+	# 确保视野已初始化
+	update_all_players_vision()
 	
 	current_round = 1
 	start_round()
@@ -244,8 +258,8 @@ func start_round():
 	turn_time_remaining = HUMAN_TURN_TIME
 	_start_turn_timer()
 	
-	# AI自动生成行动
-	_generate_ai_actions()
+	# 注意：AI行动不在回合开始时生成，而是在人类玩家提交回合后生成
+	# 这样可以确保AI和人类玩家的行动在同一回合结算
 
 # 初始化回合
 func _initialize_round():
@@ -286,8 +300,10 @@ func _process(delta):
 			turn_time_remaining -= delta
 			if turn_time_remaining <= 0:
 				# 时间到，强制提交（如果还未提交）
-				if not actions_submitted.get(HUMAN_PLAYER_ID, false):
-					submit_human_actions([])  # 空行动
+				# 注意：暂时禁用自动提交，让玩家手动控制回合结束
+				# if not actions_submitted.get(HUMAN_PLAYER_ID, false):
+				# 	submit_human_actions([])  # 空行动
+				pass
 
 # 生成AI行动
 func _generate_ai_actions():
@@ -305,14 +321,15 @@ func _generate_ai_actions():
 		action_submitted.emit(ai_id)
 
 # 添加人类玩家行动（不立即提交，等待回合结束）
-func add_human_action(action: ActionResolver.Action):
+# 返回 Dictionary: {"success": bool, "message": String}
+func add_human_action(action: ActionResolver.Action) -> Dictionary:
 	if actions_submitted.get(HUMAN_PLAYER_ID, false):
-		return  # 已经提交过了
+		return {"success": false, "message": "回合已提交，无法添加行动"}
 	
-	# 检查行动限制（每回合每个精灵只能进行一次移动和一次攻击）
-	if not _can_add_action(action):
-		print("无法添加行动：该精灵本回合已经执行过此类型的行动")
-		return
+	# 检查行动限制（每回合每个精灵只能进行一次移动和一次攻击/施法）
+	var check_result = _can_add_action(action)
+	if not check_result.success:
+		return check_result
 	
 	# 添加行动到结算器
 	action_resolver.add_action(action.player_id, action.action_type, action.sprite, action.target, action.card, action.data)
@@ -322,6 +339,8 @@ func add_human_action(action: ActionResolver.Action):
 	
 	# 发出信号通知UI更新预览
 	action_added.emit(action)
+	
+	return {"success": true, "message": ""}
 
 # 提交人类玩家行动（旧方法，保留兼容性）
 func submit_human_actions(actions: Array[ActionResolver.Action]):
@@ -343,35 +362,48 @@ func submit_human_turn():
 	actions_submitted[HUMAN_PLAYER_ID] = true
 	action_submitted.emit(HUMAN_PLAYER_ID)
 	
+	# 人类玩家提交后，生成AI行动
+	_generate_ai_actions()
+	
 	# 检查是否所有玩家都已提交
 	_check_all_submitted()
 
-# 检查是否可以添加行动（限制每回合每个精灵只能进行一次移动和一次攻击）
-func _can_add_action(action: ActionResolver.Action) -> bool:
+# 检查是否可以添加行动（限制每回合每个精灵只能进行一次移动和一次攻击/施法）
+# 返回 Dictionary: {"success": bool, "message": String}
+func _can_add_action(action: ActionResolver.Action) -> Dictionary:
 	if not action.sprite:
-		return true  # 没有精灵的行动（如地形变化）不受限制
+		return {"success": true, "message": ""}  # 没有精灵的行动（如地形变化）不受限制
 	
 	var sprite_id = action.sprite.sprite_id
+	var sprite_name = action.sprite.sprite_name
 	var counts = sprite_action_counts.get(sprite_id, {"move": 0, "attack": 0})
-	
-	# 基本行动（弃牌行动）不受限制，卡牌行动受限制
 	var is_basic_action = action.data.get("is_basic_action", false)
-	if is_basic_action:
-		return true  # 基本行动不受限制
 	
 	# 检查行动类型
 	match action.action_type:
 		ActionResolver.ActionType.MOVE:
+			# 移动行动：基本移动和卡牌移动都受限制，每回合只能移动一次
 			if counts.move >= 1:
-				return false
+				return {"success": false, "message": "您已经移动过该精灵"}
 		ActionResolver.ActionType.ATTACK:
-			if counts.attack >= 1:
-				return false
+			# 攻击行动：基本攻击不受限制（可以多次弃牌攻击），卡牌攻击受限制
+			if not is_basic_action and counts.attack >= 1:
+				return {"success": false, "message": "您已经攻击过该精灵"}
+		ActionResolver.ActionType.TERRAIN, ActionResolver.ActionType.EFFECT:
+			# 地形变化、效果：都算作施法/攻击，共享一次限制（基本行动不受限制）
+			if not is_basic_action and counts.attack >= 1:
+				var action_name = ""
+				match action.action_type:
+					ActionResolver.ActionType.TERRAIN:
+						action_name = "施法"
+					ActionResolver.ActionType.EFFECT:
+						action_name = "施法"
+				return {"success": false, "message": "您已经" + action_name + "过该精灵"}
 		_:
 			# 其他类型的行动不受限制
 			pass
 	
-	return true
+	return {"success": true, "message": ""}
 
 # 记录行动（更新计数）
 func _record_action(action: ActionResolver.Action):
@@ -380,18 +412,21 @@ func _record_action(action: ActionResolver.Action):
 	
 	var sprite_id = action.sprite.sprite_id
 	var counts = sprite_action_counts.get(sprite_id, {"move": 0, "attack": 0})
-	
-	# 基本行动（弃牌行动）不计数，卡牌行动计数
 	var is_basic_action = action.data.get("is_basic_action", false)
-	if is_basic_action:
-		return  # 基本行动不计数
 	
 	# 更新计数
 	match action.action_type:
 		ActionResolver.ActionType.MOVE:
+			# 移动行动：基本移动和卡牌移动都计数
 			counts.move += 1
 		ActionResolver.ActionType.ATTACK:
-			counts.attack += 1
+			# 攻击行动：只有卡牌攻击计数，基本攻击不计数（可以多次弃牌攻击）
+			if not is_basic_action:
+				counts.attack += 1
+		ActionResolver.ActionType.TERRAIN, ActionResolver.ActionType.EFFECT:
+			# 地形变化、效果：只有卡牌行动计数，基本行动不计数
+			if not is_basic_action:
+				counts.attack += 1
 	
 	sprite_action_counts[sprite_id] = counts
 
@@ -405,8 +440,8 @@ func _check_all_submitted():
 	
 	if all_submitted:
 		all_actions_submitted.emit()
-		# 结算行动
-		_resolve_round()
+		# 结算行动（异步执行，需要等待完成）
+		await _resolve_round()
 
 # 结算回合
 func _resolve_round():
@@ -427,11 +462,27 @@ func _resolve_round():
 	# 同步状态
 	state_sync.sync_all_sprites(all_sprites)
 	
+	# 回合结束后，更新所有精灵的位置（确保地形高度变化后精灵位置正确）
+	# 使用 await get_tree().process_frame 确保地形变化信号已处理完成
+	if sprite_renderer:
+		# 等待一帧，确保所有地形变化信号都已发出
+		await get_tree().process_frame
+		# 再等待一帧，确保所有 call_deferred 的调用都已执行（地形变化信号处理）
+		await get_tree().process_frame
+		# 再等待一帧，确保地形渲染器也已更新
+		await get_tree().process_frame
+		_update_all_sprite_positions_after_round()
+	
 	# 检查胜利/失败条件
 	_check_victory_conditions()
 	
 	# 回合结束
 	end_round()
+
+# 更新所有精灵位置（在回合结算后，已确保地形变化完成）
+func _update_all_sprite_positions_after_round():
+	if sprite_renderer:
+		sprite_renderer.update_all_sprite_positions()
 
 # 检查胜利条件
 func _check_victory_conditions():
@@ -468,6 +519,8 @@ func end_round():
 func _on_sprite_died(sprite: Sprite):
 	if sprite.has_bounty:
 		contest_point_manager.lose_bounty()
+	# 精灵死亡后更新视野
+	_on_sprite_vision_changed(sprite, sprite.hex_position, sprite.hex_position)
 
 func _on_sprite_bounty_acquired(_sprite: Sprite):
 	pass
@@ -480,6 +533,34 @@ func _on_bounty_lost(_sprite: Sprite):
 
 func _on_game_ended(_state: VictoryManager.GameState, _winner_id: int):
 	pass
+
+# 视野变化处理（精灵移动或死亡时调用）
+func _on_sprite_vision_changed(sprite: Sprite, _from: Vector2i, _to: Vector2i):
+	if not fog_of_war_manager:
+		return
+	
+	var player_id = sprite.owner_player_id
+	if player_id < 0:
+		return
+	
+	# 获取该玩家的所有精灵
+	var player_sprites = sprite_deploy.get_player_sprites(player_id)
+	if not player_sprites:
+		# 如果玩家没有精灵了，清空视野
+		fog_of_war_manager.clear_player_vision(player_id)
+		return
+	
+	# 更新该玩家的视野
+	fog_of_war_manager.update_player_vision(player_id, player_sprites, game_map)
+
+# 更新所有玩家的视野
+func update_all_players_vision():
+	if not fog_of_war_manager:
+		return
+	
+	for player_id in range(PLAYER_COUNT):
+		var player_sprites = sprite_deploy.get_player_sprites(player_id)
+		fog_of_war_manager.update_player_vision(player_id, player_sprites, game_map)
 
 # 设置UI
 func _setup_ui():
@@ -512,13 +593,28 @@ func _setup_map_rendering():
 	terrain_renderer = TerrainRenderer.new(game_map)
 	world_node.add_child(terrain_renderer)
 	
+	# 连接迷雾系统到地形渲染器
+	if fog_of_war_manager:
+		terrain_renderer.set_fog_manager(fog_of_war_manager, HUMAN_PLAYER_ID)
+		print("GameManager: 战争迷雾系统已连接到地形渲染器")
+	
 	# 创建精灵渲染器
 	sprite_renderer = SpriteRenderer.new()
 	sprite_renderer.game_map = game_map  # 传递地图引用
 	world_node.add_child(sprite_renderer)
 	
+	# 连接迷雾系统到精灵渲染器
+	if fog_of_war_manager:
+		sprite_renderer.set_fog_manager(fog_of_war_manager, HUMAN_PLAYER_ID)
+		print("GameManager: 战争迷雾系统已连接到精灵渲染器")
+	
 	# 连接精灵部署信号到渲染器
 	sprite_deploy.sprite_deployed.connect(_on_sprite_deployed.bind(sprite_renderer))
+	
+	# 连接地形变化信号到精灵渲染器（当地形高度变化时，更新精灵位置）
+	if game_map and sprite_renderer:
+		game_map.terrain_changed.connect(_on_terrain_changed_for_sprites)
+		print("GameManager: 地形变化信号已连接到精灵位置更新")
 	
 	print("地图渲染设置完成，地形数量: ", game_map.terrain_tiles.size())
 
@@ -539,6 +635,26 @@ func _setup_viewport_adaptation():
 		main_viewport.size_changed.connect(_on_main_viewport_resized)
 	
 	print("视口适配已设置 - SubViewport尺寸: ", sub_viewport.size, " 容器拉伸: ", container.stretch)
+
+# 处理地形变化（更新精灵位置）
+func _on_terrain_changed_for_sprites(hex_coord: Vector2i, _terrain: TerrainTile):
+	if not sprite_renderer:
+		return
+	
+	# 更新该位置的所有精灵的位置（地形高度可能已改变）
+	for sprite in all_sprites:
+		if sprite.is_alive and sprite.hex_position == hex_coord:
+			# 延迟一帧更新，确保地形变化已完成
+			call_deferred("_update_sprite_position_after_terrain_change", sprite)
+	
+	# 地形高度变化会影响视野阻挡，需要重新计算所有玩家的视野
+	# 延迟一帧更新，确保地形变化已完成
+	call_deferred("update_all_players_vision")
+
+# 延迟更新精灵位置（在地形变化后）
+func _update_sprite_position_after_terrain_change(sprite: Sprite):
+	if sprite_renderer and sprite.is_alive:
+		sprite_renderer._update_sprite_position(sprite)
 
 # 处理主视口尺寸变化（用于调试）
 func _on_main_viewport_resized():

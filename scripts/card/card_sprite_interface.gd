@@ -148,17 +148,73 @@ func apply_card_effect(card: Card, source_sprite: Sprite, target: Variant, game_
 				result.success = true
 				result.effect_applied = true
 				result.message = "对" + target.sprite_name + "造成" + str(damage) + "点伤害"
+				
+				# 检查攻击卡牌是否附带地形修改效果（如 C07、C09）
+				var target_terrain_coord = target.hex_position
+				var height_delta = _parse_height_modification(card.effect_description, target_terrain_coord, game_map)
+				if height_delta != 0:
+					# 修改目标精灵所在地形的高度
+					var terrain_type = TerrainTile.TerrainType.NORMAL  # 保持原地形类型
+					terrain_manager.request_terrain_change(source_sprite.owner_player_id, target_terrain_coord, terrain_type, -1, -1, height_delta)
+					
+					# 更新消息
+					if height_delta > 0:
+						result.message += "，抬高了目标所在地形" + str(height_delta) + "级"
+					elif height_delta < 0:
+						result.message += "，降低了目标所在地形" + str(abs(height_delta)) + "级"
 		
 		"terrain":
 			# 地形效果
 			if target is Vector2i:
 				var terrain_type = _get_terrain_type_from_card(card)
-				var success = game_map.modify_terrain(target, terrain_type, -1, 3)
-				if success:
-					terrain_manager.request_terrain_change(source_sprite.owner_player_id, target, terrain_type, -1, 3)
-					result.success = true
-					result.effect_applied = true
-					result.message = "创建了" + TerrainTile.TerrainType.keys()[terrain_type] + "地形"
+				var height_delta = _parse_height_modification(card.effect_description, target, game_map)
+				var duration = _parse_duration(card.effect_description)
+				
+				# 特殊效果处理
+				# C23: 延长已有地形持续时间（如果已存在）
+				if card.card_id == "C23":
+					var existing_terrain = game_map.get_terrain(target)
+					if existing_terrain and existing_terrain.terrain_type == TerrainTile.TerrainType.WATER:
+						# 延长持续时间
+						if existing_terrain.effect_duration > 0:
+							existing_terrain.effect_duration += 2
+						result.success = true
+						result.effect_applied = true
+						result.message = "延长了水流地形持续时间2回合"
+						return result
+				
+				# 对于纯高度变化类卡牌（只改变高度，不创建特殊地形类型），如果没有明确标注持续时间，应该是永久效果
+				# 判断标准：地形类型为NORMAL且高度有变化，且效果描述中没有持续时间信息
+				if terrain_type == TerrainTile.TerrainType.NORMAL and height_delta != 0:
+					# 检查效果描述中是否有持续时间信息
+					var has_duration_info = "持续" in card.effect_description or "永久" in card.effect_description
+					if not has_duration_info:
+						# 没有持续时间信息，设置为永久效果
+						duration = -1
+				
+				# 提交地形变化请求（包含高度修改）
+				terrain_manager.request_terrain_change(source_sprite.owner_player_id, target, terrain_type, -1, duration, height_delta)
+				result.success = true
+				result.effect_applied = true
+				
+				# 生成消息
+				var message_parts: Array[String] = []
+				if height_delta > 0:
+					message_parts.append("抬高了" + str(height_delta) + "级")
+				elif height_delta < 0:
+					message_parts.append("降低了" + str(abs(height_delta)) + "级")
+				
+				if terrain_type != TerrainTile.TerrainType.NORMAL:
+					message_parts.append("创建了" + TerrainTile.TerrainType.keys()[terrain_type] + "地形")
+				else:
+					message_parts.append("修改了地形")
+				
+				if duration == -1:
+					message_parts.append("（永久）")
+				elif duration > 0:
+					message_parts.append("持续" + str(duration) + "回合")
+				
+				result.message = "、".join(message_parts)
 		
 		"support":
 			# 辅助效果
@@ -207,7 +263,7 @@ func _calculate_heal(card: Card, _source: Sprite, _target: Sprite) -> int:
 # 从卡牌获取地形类型
 func _get_terrain_type_from_card(card: Card) -> TerrainTile.TerrainType:
 	match card.card_id:
-		"C03", "C08":  # 水流召唤、风水流
+		"C03", "C08", "C15", "C16", "C17", "C18", "C22", "C23":  # 水流相关卡牌
 			return TerrainTile.TerrainType.WATER
 		"C10":  # 水岩壁
 			return TerrainTile.TerrainType.ROCK
@@ -218,29 +274,39 @@ func _get_terrain_type_from_card(card: Card) -> TerrainTile.TerrainType:
 func get_attackable_targets(card: Card, source_sprite: Sprite, all_sprites: Array[Sprite], game_map: GameMap) -> Array[Sprite]:
 	var targets: Array[Sprite] = []
 	
-	# 根据range_requirement计算可攻击范围
+	# 根据range_requirement和卡牌效果描述计算可攻击范围
 	var attackable_positions: Array[Vector2i] = []
 	var attack_range: int = 0
 	
-	match card.range_requirement:
-		"within_attack_range":
-			# 使用精灵的攻击范围
-			attack_range = source_sprite.attack_range
-			var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
-			attackable_positions = range_hexes
-			print("攻击范围计算: 精灵位置=", source_sprite.hex_position, " 攻击范围=", attack_range, " 可攻击位置数=", range_hexes.size())
-		"line_2_tiles":
-			# 直线2格内（需要特殊处理，这里简化）
-			attack_range = 2
-			var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
-			attackable_positions = range_hexes
-			print("攻击范围计算: 直线2格，可攻击位置数=", range_hexes.size())
-		_:
-			# 默认使用精灵攻击范围
-			attack_range = source_sprite.attack_range
-			var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
-			attackable_positions = range_hexes
-			print("攻击范围计算: 默认范围=", attack_range, " 可攻击位置数=", range_hexes.size())
+	# 首先检查卡牌效果描述中是否有特殊范围描述
+	var special_range = _parse_special_range_from_effect(card.effect_description)
+	if special_range > 0:
+		# 卡牌有特殊范围描述，优先使用
+		attack_range = special_range
+		var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
+		attackable_positions = range_hexes
+		print("攻击范围计算（卡牌特殊范围）: 精灵位置=", source_sprite.hex_position, " 范围=", attack_range, " 可攻击位置数=", range_hexes.size())
+	else:
+		# 没有特殊范围描述，根据range_requirement判断
+		match card.range_requirement:
+			"within_attack_range":
+				# 使用精灵的施法范围（默认）
+				attack_range = source_sprite.cast_range
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
+				attackable_positions = range_hexes
+				print("攻击范围计算（精灵施法范围）: 精灵位置=", source_sprite.hex_position, " 施法范围=", attack_range, " 可攻击位置数=", range_hexes.size())
+			"line_2_tiles":
+				# 直线2格内（需要特殊处理，这里简化）
+				attack_range = 2
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
+				attackable_positions = range_hexes
+				print("攻击范围计算: 直线2格，可攻击位置数=", range_hexes.size())
+			_:
+				# 默认使用精灵施法范围
+				attack_range = source_sprite.cast_range
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
+				attackable_positions = range_hexes
+				print("攻击范围计算（默认精灵施法范围）: 范围=", attack_range, " 可攻击位置数=", range_hexes.size())
 	
 	# 查找范围内的敌方精灵
 	print("查找敌方精灵: 总精灵数=", all_sprites.size(), " 己方玩家ID=", source_sprite.owner_player_id)
@@ -264,26 +330,177 @@ func get_attackable_targets(card: Card, source_sprite: Sprite, all_sprites: Arra
 func get_terrain_placement_positions(card: Card, source_sprite: Sprite, game_map: GameMap) -> Array[Vector2i]:
 	var positions: Array[Vector2i] = []
 	
-	match card.range_requirement:
-		"adjacent":
-			# 相邻1格
-			var neighbors = HexGrid.get_neighbors(source_sprite.hex_position)
-			for neighbor in neighbors:
-				if game_map.is_valid_hex_with_terrain(neighbor):
-					positions.append(neighbor)
-		"adjacent_3_tiles":
-			# 3格范围内（需与自身精灵相邻）
-			var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, 3)
-			for hex in range_hexes:
-				# 必须在3格范围内，且与自身精灵相邻
-				if HexGrid.is_adjacent(hex, source_sprite.hex_position):
+	# 首先检查卡牌效果描述中是否有特殊范围描述（如"相邻1格"）
+	var special_range = _parse_special_range_from_effect(card.effect_description)
+	var is_adjacent_only = _check_adjacent_in_effect(card.effect_description)
+	
+	if is_adjacent_only:
+		# 卡牌描述明确说"相邻"，使用相邻1格
+		var neighbors = HexGrid.get_neighbors(source_sprite.hex_position)
+		for neighbor in neighbors:
+			if game_map.is_valid_hex_with_terrain(neighbor):
+				positions.append(neighbor)
+		print("地形放置范围（卡牌特殊描述：相邻）: 相邻1格")
+	elif special_range > 0:
+		# 卡牌有特殊范围描述，使用该范围
+		var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, special_range)
+		for hex in range_hexes:
+			if game_map.is_valid_hex_with_terrain(hex):
+				positions.append(hex)
+		print("地形放置范围（卡牌特殊范围）: ", special_range, "格")
+	else:
+		# 没有特殊描述，根据range_requirement判断
+		match card.range_requirement:
+			"adjacent":
+				# 相邻1格
+				var neighbors = HexGrid.get_neighbors(source_sprite.hex_position)
+				for neighbor in neighbors:
+					if game_map.is_valid_hex_with_terrain(neighbor):
+						positions.append(neighbor)
+			"adjacent_2_tiles":
+				# 2格范围内（需与自身精灵相邻）
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, 2)
+				for hex in range_hexes:
+					# 必须在2格范围内，且与自身精灵相邻
+					if HexGrid.is_adjacent(hex, source_sprite.hex_position):
+						if game_map.is_valid_hex_with_terrain(hex):
+							positions.append(hex)
+			"adjacent_3_tiles":
+				# 3格范围内（需与自身精灵相邻）
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, 3)
+				for hex in range_hexes:
+					# 必须在3格范围内，且与自身精灵相邻
+					if HexGrid.is_adjacent(hex, source_sprite.hex_position):
+						if game_map.is_valid_hex_with_terrain(hex):
+							positions.append(hex)
+			_:
+				# 默认使用精灵施法范围
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, source_sprite.cast_range)
+				for hex in range_hexes:
 					if game_map.is_valid_hex_with_terrain(hex):
 						positions.append(hex)
-		_:
-			# 默认相邻1格
-			var neighbors = HexGrid.get_neighbors(source_sprite.hex_position)
-			for neighbor in neighbors:
-				if game_map.is_valid_hex_with_terrain(neighbor):
-					positions.append(neighbor)
+				print("地形放置范围（默认精灵施法范围）: ", source_sprite.cast_range, "格")
 	
 	return positions
+
+# 从卡牌效果描述中解析特殊范围（如"直线2格内"、"3格范围内"等）
+func _parse_special_range_from_effect(effect_description: String) -> int:
+	if effect_description.is_empty():
+		return 0
+	
+	# 如果明确提到"相邻"，返回0（表示使用相邻逻辑，不是范围）
+	if "相邻" in effect_description or "adjacent" in effect_description.to_lower():
+		return 0
+	
+	# 匹配模式：X格内、X格范围内、直线X格内、周围X格等
+	# 优先匹配范围描述（如"2格内"、"3格范围内"、"周围1格"）
+	var regex = RegEx.new()
+	# 匹配：X格内、X格范围内、周围X格、直线X格内等
+	regex.compile("(?:直线|周围|范围内|范围)?(\\d+)\\s*格")
+	var result = regex.search(effect_description)
+	if result:
+		var range_str = result.get_string(1)
+		var range_value = int(range_str)
+		# 如果范围是1格且描述中有"相邻"，返回0（使用相邻逻辑）
+		if range_value == 1 and ("相邻" in effect_description or "adjacent" in effect_description.to_lower()):
+			return 0
+		return range_value
+	
+	return 0
+
+# 检查效果描述中是否明确提到"相邻"
+func _check_adjacent_in_effect(effect_description: String) -> bool:
+	if effect_description.is_empty():
+		return false
+	
+	# 检查是否包含"相邻"关键词
+	return "相邻" in effect_description or "adjacent" in effect_description.to_lower()
+
+# 从卡牌效果描述中解析高度修改量（如"降低1级"、"抬高2级"等）
+func _parse_height_modification(effect_description: String, target_coord: Vector2i = Vector2i(-1, -1), game_map: GameMap = null) -> int:
+	if effect_description.is_empty():
+		return 0
+	
+	# 使用正则表达式匹配高度修改描述
+	var regex = RegEx.new()
+	
+	# 匹配"降低至X级"、"降低到X级"（根据当前高度计算delta）
+	regex.compile("(?:降低至|降低到|下降到|下降至)(\\d+)\\s*级")
+	var result = regex.search(effect_description)
+	if result:
+		var target_level_str = result.get_string(1)
+		var target_level = int(target_level_str)
+		if target_coord != Vector2i(-1, -1) and game_map:
+			var terrain = game_map.get_terrain(target_coord)
+			var current_level = terrain.height_level if terrain else 1
+			return target_level - current_level  # 返回需要的delta
+		else:
+			# 无法获取当前高度，返回假设降低（最坏情况）
+			return -(3 - target_level)
+	
+	# 匹配"抬高至X级"、"抬高到X级"、"提升至X级"（根据当前高度计算delta）
+	regex.compile("(?:抬高至|抬升至|抬高到|提升至|提升到)(\\d+)\\s*级")
+	result = regex.search(effect_description)
+	if result:
+		var target_level_str = result.get_string(1)
+		var target_level = int(target_level_str)
+		if target_coord != Vector2i(-1, -1) and game_map:
+			var terrain = game_map.get_terrain(target_coord)
+			var current_level = terrain.height_level if terrain else 1
+			return target_level - current_level  # 返回需要的delta
+		else:
+			# 无法获取当前高度，返回假设抬高（最坏情况）
+			return target_level - 1
+	
+	# 匹配"调整为X级"、"调整至X级"（根据当前高度计算delta）
+	regex.compile("(?:调整为|调整至|调整到)(\\d+)\\s*级")
+	result = regex.search(effect_description)
+	if result:
+		var target_level_str = result.get_string(1)
+		var target_level = int(target_level_str)
+		if target_coord != Vector2i(-1, -1) and game_map:
+			var terrain = game_map.get_terrain(target_coord)
+			var current_level = terrain.height_level if terrain else 1
+			return target_level - current_level  # 返回需要的delta
+		else:
+			# 无法获取当前高度，默认假设调整为1级
+			return target_level - 1
+	
+	# 匹配"降低X级"、"下降X级"等（负数）
+	regex.compile("(?:降低|下降|减少)(\\d+)\\s*级")
+	result = regex.search(effect_description)
+	if result:
+		var level_str = result.get_string(1)
+		var level_value = int(level_str)
+		return -level_value  # 返回负数表示降低
+	
+	# 匹配"抬高X级"、"提升X级"、"上升X级"等（正数）
+	regex.compile("(?:抬高|提升|上升|增加)(\\d+)\\s*级")
+	result = regex.search(effect_description)
+	if result:
+		var level_str = result.get_string(1)
+		var level_value = int(level_str)
+		return level_value  # 返回正数表示抬高
+	
+	# 未找到高度修改描述
+	return 0
+
+# 从效果描述中解析持续时间
+func _parse_duration(effect_description: String) -> int:
+	if effect_description.is_empty():
+		return 3  # 默认3回合
+	
+	# 匹配"永久"
+	if "永久" in effect_description:
+		return -1  # -1表示永久
+	
+	# 匹配"持续X回合"
+	var regex = RegEx.new()
+	regex.compile("持续(\\d+)\\s*回合")
+	var result = regex.search(effect_description)
+	if result:
+		var duration_str = result.get_string(1)
+		return int(duration_str)
+	
+	# 默认3回合
+	return 3

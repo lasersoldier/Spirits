@@ -60,6 +60,11 @@ var basic_action_buttons: Dictionary = {}  # "attack" 和 "move" 按钮
 # 精灵资料卡
 var sprite_info_card: SpriteInfoCard = null
 
+# 重叠精灵选择系统
+var last_clicked_position: Vector2i = Vector2i(-1, -1)
+var last_clicked_sprites: Array[Sprite] = []
+var last_selected_sprite_index: int = 0
+
 # 动作预览UI
 var action_preview_panel: Panel = null
 var action_preview_list: VBoxContainer = null
@@ -67,6 +72,19 @@ var action_preview_items: Array[Control] = []
 
 # 回合结束按钮
 var end_turn_button: Button = null
+
+# 提示信息标签
+var message_label: Label = null
+var message_timer: Timer = null
+
+# 精灵切换选择面板
+var sprite_selection_panel: Panel = null
+var sprite_selection_buttons: Array[Button] = []
+var sprite_selection_vbox: VBoxContainer = null
+var current_overlapping_hex: Vector2i = Vector2i(-1, -1)
+var current_overlapping_sprites: Array[Sprite] = []
+var pending_card: Card = null  # 等待选择精灵的卡牌
+var pending_card_is_right_drag: bool = false  # 是否是右键拖拽
 
 func _ready():
 	# 初始化UI节点
@@ -111,6 +129,12 @@ func _ready():
 	# 创建回合结束按钮
 	_create_end_turn_button()
 	
+	# 创建提示信息标签
+	_create_message_label()
+	
+	# 创建精灵切换选择面板
+	_create_sprite_selection_panel()
+	
 	# 设置处理输入
 	set_process_input(true)
 
@@ -142,6 +166,16 @@ func set_game_manager(gm: GameManager):
 	# 传递游戏管理器引用给手牌UI
 	if hand_card_ui:
 		hand_card_ui.set_game_manager(gm)
+	
+	# 连接战争迷雾系统
+	if game_manager and game_manager.fog_of_war_manager:
+		if game_manager.terrain_renderer:
+			game_manager.terrain_renderer.set_fog_manager(game_manager.fog_of_war_manager, GameManager.HUMAN_PLAYER_ID)
+			print("MainUI: 战争迷雾系统已连接到地形渲染器")
+		if game_manager.sprite_renderer:
+			game_manager.sprite_renderer.set_fog_manager(game_manager.fog_of_war_manager, GameManager.HUMAN_PLAYER_ID)
+			print("MainUI: 战争迷雾系统已连接到精灵渲染器")
+	
 	_connect_signals()
 
 func _connect_signals():
@@ -386,18 +420,22 @@ func _on_card_drag_ended(_card_ui: CardUI, card: Card, drop_position: Vector2):
 		print("未拖动到有效的地图位置")
 		return
 	
-	# 查找该位置的精灵
-	var target_sprite = null
+	# 查找该位置的所有精灵
+	var sprites_at_position: Array[Sprite] = []
 	for sprite in game_manager.all_sprites:
 		if sprite.is_alive and sprite.hex_position == target_hex:
-			target_sprite = sprite
-			break
+			sprites_at_position.append(sprite)
 	
-	if target_sprite:
-		# 拖动到精灵上，检查是否可以使用
-		_try_use_card_on_sprite(card, target_sprite)
-	else:
+	if sprites_at_position.is_empty():
 		print("该位置没有精灵")
+		return
+	
+	# 如果只有一个精灵，直接使用
+	if sprites_at_position.size() == 1:
+		_try_use_card_on_sprite(card, sprites_at_position[0])
+	else:
+		# 多个精灵，显示选择面板
+		_show_sprite_selection_panel(target_hex, sprites_at_position, card, false)
 
 # 右键拖拽结束（弃牌行动）
 func _on_card_right_drag_ended(_card_ui: CardUI, card: Card, drop_position: Vector2):
@@ -436,24 +474,22 @@ func _on_card_right_drag_ended(_card_ui: CardUI, card: Card, drop_position: Vect
 		print("未拖动到有效的地图位置")
 		return
 	
-	# 查找该位置的精灵
-	var target_sprite = null
+	# 查找该位置的所有精灵
+	var sprites_at_position: Array[Sprite] = []
 	for sprite in game_manager.all_sprites:
 		if sprite.is_alive and sprite.hex_position == target_hex:
-			target_sprite = sprite
-			break
+			sprites_at_position.append(sprite)
 	
-	if not target_sprite:
+	if sprites_at_position.is_empty():
 		print("该位置没有精灵，无法执行弃牌行动")
 		return
 	
-	# 判断拖到的精灵是己方还是敌方
-	if target_sprite.owner_player_id == GameManager.HUMAN_PLAYER_ID:
-		# 拖到己方精灵 → 该精灵就是执行者，直接弹出移动/攻击选择
-		_enter_discard_action_selection_phase(card, target_sprite, target_sprite)
+	# 如果只有一个精灵，直接使用
+	if sprites_at_position.size() == 1:
+		_apply_right_drag_to_sprite(card, sprites_at_position[0])
 	else:
-		# 拖到敌方精灵 → 需要先选择己方精灵作为执行者
-		_enter_discard_action_selection_phase(card, null, target_sprite)
+		# 多个精灵，显示选择面板
+		_show_sprite_selection_panel(target_hex, sprites_at_position, card, true)
 
 # 获取指定屏幕位置的精灵
 func _get_sprite_at_position(screen_pos: Vector2) -> Sprite:
@@ -502,29 +538,96 @@ func _get_sprite_at_position(screen_pos: Vector2) -> Sprite:
 	viewport_pos.x = clamp(viewport_pos.x, 0, viewport_size.x)
 	viewport_pos.y = clamp(viewport_pos.y, 0, viewport_size.y)
 	
-	# 计算射线与地面的交点
+	# 生成射线
 	var from = camera.project_ray_origin(viewport_pos)
 	var ray_dir = camera.project_ray_normal(viewport_pos)
 	var plane_normal = Vector3(0, 1, 0)
-	var plane_point = Vector3(0, 0, 0)
 	var denom = plane_normal.dot(ray_dir)
 	
 	if abs(denom) < 0.0001:
 		return null
 	
-	var t = (plane_point - from).dot(plane_normal) / denom
-	if t < 0:
+	# 首先尝试检测射线与地形顶部平面的交点（优先检测精灵所在的地形高度）
+	var best_hex_coord: Vector2i = Vector2i(-1, -1)
+	var best_t: float = INF
+	
+	# 检测所有地形高度平面（1级到3级）
+	for level in range(1, 4):  # 1, 2, 3
+		var terrain_height = _get_terrain_height_for_level(level)
+		var plane_point = Vector3(0, terrain_height, 0)
+		var t = (plane_point - from).dot(plane_normal) / denom
+		
+		if t >= 0 and t < best_t:  # 射线与这个高度的平面相交，且比之前的更近
+			var intersection_pos = from + ray_dir * t
+			# 将交点投影到地面（Y=0）来计算六边形坐标
+			var ground_pos = Vector3(intersection_pos.x, 0, intersection_pos.z)
+			var hex_coord = HexGrid.world_to_hex(ground_pos, game_manager.game_map.hex_size, game_manager.game_map.map_height)
+			
+			# 检查该坐标是否有地形，且地形高度是否匹配
+			if game_manager.game_map.is_valid_hex_with_terrain(hex_coord):
+				var terrain = game_manager.game_map.get_terrain(hex_coord)
+				if terrain and terrain.height_level == level:
+					# 找到匹配的地形，记录这个结果（选择最近的）
+					best_t = t
+					best_hex_coord = hex_coord
+	
+	# 如果没有找到匹配的地形顶部，回退到地面检测
+	if best_hex_coord == Vector2i(-1, -1):
+		var ground_plane_point = Vector3(0, 0, 0)
+		var ground_t = (ground_plane_point - from).dot(plane_normal) / denom
+		
+		if ground_t >= 0:
+			var ground_pos = from + ray_dir * ground_t
+			best_hex_coord = HexGrid.world_to_hex(ground_pos, game_manager.game_map.hex_size, game_manager.game_map.map_height)
+	
+	if best_hex_coord == Vector2i(-1, -1):
 		return null
 	
-	var world_pos = from + ray_dir * t
-	var hex_coord = HexGrid.world_to_hex(world_pos, game_manager.game_map.hex_size, game_manager.game_map.map_height)
+	# 使用统一的循环切换逻辑
+	return _get_sprite_at_hex(best_hex_coord)
+
+# 根据六边形坐标获取精灵（使用循环切换逻辑，用于拖动等场景）
+func _get_sprite_at_hex(hex_coord: Vector2i, increment_selection: bool = true) -> Sprite:
+	if hex_coord == Vector2i(-1, -1):
+		return null
 	
-	# 查找该位置的精灵
+	# 查找该位置的所有精灵
+	var sprites_at_position: Array[Sprite] = []
 	for sprite in game_manager.all_sprites:
 		if sprite.is_alive and sprite.hex_position == hex_coord:
-			return sprite
+			sprites_at_position.append(sprite)
 	
-	return null
+	if sprites_at_position.is_empty():
+		# 没有精灵，重置状态
+		last_clicked_position = Vector2i(-1, -1)
+		last_clicked_sprites.clear()
+		last_selected_sprite_index = 0
+		return null
+	
+	# 如果点击的是新位置，重置索引并优先选择己方精灵
+	if hex_coord != last_clicked_position:
+		last_clicked_position = hex_coord
+		last_clicked_sprites = sprites_at_position
+		last_selected_sprite_index = 0
+		
+		# 优先返回己方精灵
+		for i in range(sprites_at_position.size()):
+			if sprites_at_position[i].owner_player_id == GameManager.HUMAN_PLAYER_ID:
+				last_selected_sprite_index = i
+				break
+	elif increment_selection:
+		# 同一位置，循环切换到下一个精灵
+		last_selected_sprite_index = (last_selected_sprite_index + 1) % sprites_at_position.size()
+	
+	# 如果只有一个精灵，直接返回
+	if sprites_at_position.size() == 1:
+		return sprites_at_position[0]
+	
+	# 多个精灵，返回当前索引的精灵
+	var selected_sprite = sprites_at_position[last_selected_sprite_index]
+	if sprites_at_position.size() > 1 and increment_selection:
+		print("该位置有 ", sprites_at_position.size(), " 个精灵，当前选择: ", selected_sprite.sprite_name, " (玩家", selected_sprite.owner_player_id, ") [", last_selected_sprite_index + 1, "/", sprites_at_position.size(), "]")
+	return selected_sprite
 
 # 处理鼠标中键点击（显示精灵资料卡）
 func _handle_middle_click():
@@ -534,7 +637,7 @@ func _handle_middle_click():
 	# 获取鼠标位置
 	var mouse_pos = get_global_mouse_position()
 	
-	# 查找该位置的精灵
+	# 查找该位置的精灵（使用循环切换逻辑）
 	var sprite = _get_sprite_at_position(mouse_pos)
 	
 	if sprite:
@@ -736,13 +839,11 @@ func _confirm_card_use(card: Card, source_sprite: Sprite, target: Variant):
 	)
 	
 	# 添加到行动队列
-	var action_count_before = game_manager.action_resolver.actions.size()
-	game_manager.add_human_action(action)
-	var action_count_after = game_manager.action_resolver.actions.size()
+	var result = game_manager.add_human_action(action)
 	
 	# 检查行动是否成功添加（如果被限制，行动不会被添加）
-	if action_count_after == action_count_before:
-		print("无法使用卡牌：该精灵本回合已经执行过此类型的行动")
+	if not result.success:
+		_show_message(result.message)
 		# 不消耗卡牌，直接退出
 		_exit_card_use_phase()
 		return
@@ -932,28 +1033,70 @@ func _get_hex_at_screen_position(screen_pos: Vector2) -> Vector2i:
 	viewport_pos.x = clamp(viewport_pos.x, 0, viewport_size.x)
 	viewport_pos.y = clamp(viewport_pos.y, 0, viewport_size.y)
 	
-	# 计算射线与地面的交点
+	# 生成射线
 	var from = camera.project_ray_origin(viewport_pos)
 	var ray_dir = camera.project_ray_normal(viewport_pos)
 	var plane_normal = Vector3(0, 1, 0)
-	var plane_point = Vector3(0, 0, 0)
 	var denom = plane_normal.dot(ray_dir)
 	
 	if abs(denom) < 0.0001:
 		return Vector2i(-1, -1)
 	
-	var t = (plane_point - from).dot(plane_normal) / denom
-	if t < 0:
+	# 首先尝试检测射线与地形顶部平面的交点
+	# 遍历所有可能的地形高度（1级到3级），找到距离摄像机最近的匹配地形
+	var best_hex_coord: Vector2i = Vector2i(-1, -1)
+	var best_t: float = INF
+	
+	# 检测所有地形高度平面
+	for level in range(1, 4):  # 1, 2, 3
+		var terrain_height = _get_terrain_height_for_level(level)
+		var plane_point = Vector3(0, terrain_height, 0)
+		var t = (plane_point - from).dot(plane_normal) / denom
+		
+		if t >= 0 and t < best_t:  # 射线与这个高度的平面相交，且比之前的更近
+			var intersection_pos = from + ray_dir * t
+			# 将交点投影到地面（Y=0）来计算六边形坐标
+			var ground_pos = Vector3(intersection_pos.x, 0, intersection_pos.z)
+			var hex_coord = HexGrid.world_to_hex(ground_pos, game_manager.game_map.hex_size, game_manager.game_map.map_height)
+			
+			# 检查该坐标是否有地形，且地形高度是否匹配
+			if game_manager.game_map._is_valid_hex(hex_coord):
+				var terrain = game_manager.game_map.get_terrain(hex_coord)
+				if terrain and terrain.height_level == level:
+					# 找到匹配的地形，记录这个结果（选择最近的）
+					best_t = t
+					best_hex_coord = hex_coord
+	
+	# 如果找到了匹配的地形顶部，使用它
+	if best_hex_coord != Vector2i(-1, -1):
+		return best_hex_coord
+	
+	# 如果没有找到匹配的地形顶部，回退到地面检测
+	var ground_plane_point = Vector3(0, 0, 0)
+	var ground_t = (ground_plane_point - from).dot(plane_normal) / denom
+	
+	if ground_t < 0:
 		return Vector2i(-1, -1)
 	
-	var world_pos = from + ray_dir * t
-	var hex_coord = HexGrid.world_to_hex(world_pos, game_manager.game_map.hex_size, game_manager.game_map.map_height)
+	var ground_pos = from + ray_dir * ground_t
+	var hex_coord = HexGrid.world_to_hex(ground_pos, game_manager.game_map.hex_size, game_manager.game_map.map_height)
 	
-	# 检查坐标是否有效
 	if game_manager.game_map._is_valid_hex(hex_coord):
 		return hex_coord
 	
 	return Vector2i(-1, -1)
+
+# 获取地形高度（与TerrainRenderer和MapClickHandler保持一致）
+func _get_terrain_height_for_level(level: int) -> float:
+	match level:
+		1:
+			return 3.0  # 1级地形高度
+		2:
+			return 6.0  # 2级地形高度
+		3:
+			return 12.0  # 3级地形高度
+		_:
+			return 3.0
 
 # 更新右键拖拽反馈（实时显示移动或攻击提示）
 func _update_right_drag_feedback(mouse_pos: Vector2):
@@ -1244,18 +1387,30 @@ func _select_source_sprite_for_discard_action(hex_coord: Vector2i):
 	if not game_manager:
 		return
 	
-	# 查找该位置的己方精灵
-	var friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
-	var selected_sprite = null
+	# 查找该位置的己方精灵（使用循环切换逻辑，但只考虑己方精灵）
+	var friendly_sprites_at_position: Array[Sprite] = []
+	var all_friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
 	
-	for sprite in friendly_sprites:
+	for sprite in all_friendly_sprites:
 		if sprite.is_alive and sprite.hex_position == hex_coord:
-			selected_sprite = sprite
-			break
+			friendly_sprites_at_position.append(sprite)
 	
-	if not selected_sprite:
+	if friendly_sprites_at_position.is_empty():
 		print("该位置没有己方精灵")
 		return
+	
+	# 如果点击的是新位置，重置索引
+	if hex_coord != last_clicked_position:
+		last_clicked_position = hex_coord
+		last_clicked_sprites = friendly_sprites_at_position
+		last_selected_sprite_index = 0
+	else:
+		# 同一位置，循环切换到下一个己方精灵
+		last_selected_sprite_index = (last_selected_sprite_index + 1) % friendly_sprites_at_position.size()
+	
+	var selected_sprite = friendly_sprites_at_position[last_selected_sprite_index]
+	if friendly_sprites_at_position.size() > 1:
+		print("该位置有 ", friendly_sprites_at_position.size(), " 个己方精灵，当前选择: ", selected_sprite.sprite_name, " [", last_selected_sprite_index + 1, "/", friendly_sprites_at_position.size(), "]")
 	
 	# 设置执行者
 	discard_action_state.source_sprite = selected_sprite
@@ -1269,16 +1424,15 @@ func _select_source_sprite_for_discard_attack(hex_coord: Vector2i):
 	if not game_manager:
 		return
 	
-	# 查找该位置的己方精灵
-	var friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
-	var selected_sprite = null
+	# 查找该位置的己方精灵（使用循环切换逻辑，但只考虑己方精灵）
+	var friendly_sprites_at_position: Array[Sprite] = []
+	var all_friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
 	
-	for sprite in friendly_sprites:
+	for sprite in all_friendly_sprites:
 		if sprite.is_alive and sprite.hex_position == hex_coord:
-			selected_sprite = sprite
-			break
+			friendly_sprites_at_position.append(sprite)
 	
-	if not selected_sprite:
+	if friendly_sprites_at_position.is_empty():
 		print("该位置没有己方精灵")
 		return
 	
@@ -1286,6 +1440,19 @@ func _select_source_sprite_for_discard_attack(hex_coord: Vector2i):
 	if not target_sprite:
 		print("错误：没有攻击目标")
 		return
+	
+	# 如果点击的是新位置，重置索引
+	if hex_coord != last_clicked_position:
+		last_clicked_position = hex_coord
+		last_clicked_sprites = friendly_sprites_at_position
+		last_selected_sprite_index = 0
+	else:
+		# 同一位置，循环切换到下一个己方精灵
+		last_selected_sprite_index = (last_selected_sprite_index + 1) % friendly_sprites_at_position.size()
+	
+	var selected_sprite = friendly_sprites_at_position[last_selected_sprite_index]
+	if friendly_sprites_at_position.size() > 1:
+		print("该位置有 ", friendly_sprites_at_position.size(), " 个己方精灵，当前选择: ", selected_sprite.sprite_name, " [", last_selected_sprite_index + 1, "/", friendly_sprites_at_position.size(), "]")
 	
 	# 选择己方精灵后，高亮该精灵攻击范围内的所有敌人
 	discard_action_state.source_sprite = selected_sprite
@@ -1298,18 +1465,30 @@ func _select_source_sprite_for_discard_move(hex_coord: Vector2i):
 	if not game_manager:
 		return
 	
-	# 查找该位置的己方精灵
-	var friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
-	var selected_sprite = null
+	# 查找该位置的己方精灵（使用循环切换逻辑，但只考虑己方精灵）
+	var friendly_sprites_at_position: Array[Sprite] = []
+	var all_friendly_sprites = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
 	
-	for sprite in friendly_sprites:
+	for sprite in all_friendly_sprites:
 		if sprite.is_alive and sprite.hex_position == hex_coord:
-			selected_sprite = sprite
-			break
+			friendly_sprites_at_position.append(sprite)
 	
-	if not selected_sprite:
+	if friendly_sprites_at_position.is_empty():
 		print("该位置没有己方精灵")
 		return
+	
+	# 如果点击的是新位置，重置索引
+	if hex_coord != last_clicked_position:
+		last_clicked_position = hex_coord
+		last_clicked_sprites = friendly_sprites_at_position
+		last_selected_sprite_index = 0
+	else:
+		# 同一位置，循环切换到下一个己方精灵
+		last_selected_sprite_index = (last_selected_sprite_index + 1) % friendly_sprites_at_position.size()
+	
+	var selected_sprite = friendly_sprites_at_position[last_selected_sprite_index]
+	if friendly_sprites_at_position.size() > 1:
+		print("该位置有 ", friendly_sprites_at_position.size(), " 个己方精灵，当前选择: ", selected_sprite.sprite_name, " [", last_selected_sprite_index + 1, "/", friendly_sprites_at_position.size(), "]")
 	
 	discard_action_state.source_sprite = selected_sprite
 	print("选择了移动精灵: ", selected_sprite.sprite_name)
@@ -1462,15 +1641,6 @@ func _submit_discard_attack_action(target_sprite: Sprite):
 	if not game_manager or not discard_action_state.card or not discard_action_state.source_sprite:
 		return
 	
-	# 从手牌中移除卡牌
-	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
-	if hand_manager:
-		print("弃牌行动：从手牌中移除卡牌 ", discard_action_state.card.card_name, " 移除前手牌数量: ", hand_manager.hand_cards.size())
-		hand_manager.remove_card(discard_action_state.card, "discarded")
-		print("弃牌行动：移除后手牌数量: ", hand_manager.hand_cards.size())
-	else:
-		print("错误：无法获取手牌管理器")
-	
 	# 创建基本攻击行动并添加到队列（不立即执行）
 	var source_sprite = discard_action_state.source_sprite
 	var action = ActionResolver.Action.new(
@@ -1482,19 +1652,24 @@ func _submit_discard_attack_action(target_sprite: Sprite):
 		{"is_basic_action": true}  # 标记为基本行动
 	)
 	
-	# 添加到行动队列（基本行动不受限制，但检查一下以防万一）
-	var action_count_before = game_manager.action_resolver.actions.size()
-	game_manager.add_human_action(action)
-	var action_count_after = game_manager.action_resolver.actions.size()
+	# 先检查行动是否成功添加（在移除卡牌之前）
+	var result = game_manager.add_human_action(action)
 	
 	# 检查行动是否成功添加
-	if action_count_after == action_count_before:
-		print("无法添加基本攻击行动")
-		# 返还卡牌
-		if hand_manager:
-			hand_manager.add_card(discard_action_state.card)
+	if not result.success:
+		_show_message(result.message)
+		# 行动失败，不消耗卡牌，直接退出
 		_exit_discard_action_phase()
 		return
+	
+	# 行动成功，从手牌中移除卡牌
+	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
+	if hand_manager:
+		print("弃牌行动：从手牌中移除卡牌 ", discard_action_state.card.card_name, " 移除前手牌数量: ", hand_manager.hand_cards.size())
+		hand_manager.remove_card(discard_action_state.card, "discarded")
+		print("弃牌行动：移除后手牌数量: ", hand_manager.hand_cards.size())
+	else:
+		print("错误：无法获取手牌管理器")
 	
 	# 显示预览
 	_update_action_preview()
@@ -1504,19 +1679,169 @@ func _submit_discard_attack_action(target_sprite: Sprite):
 	# 退出弃牌行动阶段
 	_exit_discard_action_phase()
 
+# 创建提示信息标签
+func _create_message_label():
+	message_label = Label.new()
+	message_label.text = ""
+	message_label.visible = false
+	# 手动设置锚点实现顶部居中
+	message_label.anchor_left = 0.5
+	message_label.anchor_right = 0.5
+	message_label.anchor_top = 0.0
+	message_label.anchor_bottom = 0.0
+	message_label.offset_left = -200  # 宽度的一半，实现居中
+	message_label.offset_right = 200  # 宽度的一半
+	message_label.offset_top = 20
+	message_label.offset_bottom = 80
+	message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	message_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	UIScaleManager.apply_scale_to_label(message_label, 20)
+	message_label.add_theme_color_override("font_color", Color.YELLOW)
+	message_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	message_label.add_theme_constant_override("outline_size", 4)
+	add_child(message_label)
+	
+	# 创建定时器
+	message_timer = Timer.new()
+	message_timer.wait_time = 3.0
+	message_timer.one_shot = true
+	message_timer.timeout.connect(_on_message_timer_timeout)
+	add_child(message_timer)
+
+# 创建精灵切换选择面板
+func _create_sprite_selection_panel():
+	sprite_selection_panel = Panel.new()
+	sprite_selection_panel.visible = false
+	sprite_selection_panel.set_anchors_preset(Control.PRESET_CENTER)
+	sprite_selection_panel.custom_minimum_size = Vector2(300, 200)
+	
+	# 创建标题标签
+	var title_label = Label.new()
+	title_label.text = "选择目标精灵"
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UIScaleManager.apply_scale_to_label(title_label, 18)
+	title_label.add_theme_color_override("font_color", Color.WHITE)
+	
+	# 创建垂直布局容器
+	sprite_selection_vbox = VBoxContainer.new()
+	sprite_selection_vbox.add_child(title_label)
+	
+	# 创建取消按钮
+	var cancel_button = Button.new()
+	cancel_button.text = "取消"
+	UIScaleManager.apply_scale_to_button(cancel_button, 16)
+	cancel_button.pressed.connect(_hide_sprite_selection_panel)
+	sprite_selection_vbox.add_child(cancel_button)
+	
+	sprite_selection_panel.add_child(sprite_selection_vbox)
+	add_child(sprite_selection_panel)
+
+# 显示精灵切换选择面板
+func _show_sprite_selection_panel(hex_coord: Vector2i, sprites: Array[Sprite], card: Card, is_right_drag: bool = false):
+	if not sprite_selection_panel or sprites.size() <= 1:
+		return
+	
+	current_overlapping_hex = hex_coord
+	current_overlapping_sprites = sprites
+	pending_card = card
+	pending_card_is_right_drag = is_right_drag
+	
+	# 清除旧按钮
+	for button in sprite_selection_buttons:
+		if is_instance_valid(button):
+			button.queue_free()
+	sprite_selection_buttons.clear()
+	
+	# 移除旧按钮（保留标题和取消按钮）
+	for i in range(sprite_selection_vbox.get_child_count() - 1, 0, -1):
+		var child = sprite_selection_vbox.get_child(i)
+		if child is Button and child.text != "取消":
+			sprite_selection_vbox.remove_child(child)
+			child.queue_free()
+	
+	# 创建选择按钮
+	for sprite in sprites:
+		var button = Button.new()
+		var button_text = sprite.sprite_name
+		if sprite.owner_player_id != GameManager.HUMAN_PLAYER_ID:
+			button_text += " (敌方玩家" + str(sprite.owner_player_id) + ")"
+		else:
+			button_text += " (己方)"
+		button.text = button_text
+		UIScaleManager.apply_scale_to_button(button, 16)
+		button.pressed.connect(_on_sprite_selection_button_pressed.bind(sprite))
+		sprite_selection_vbox.add_child(button)
+		sprite_selection_buttons.append(button)
+	
+	# 显示面板
+	sprite_selection_panel.visible = true
+	print("显示精灵选择面板，共 ", sprites.size(), " 个精灵")
+
+# 隐藏精灵切换选择面板
+func _hide_sprite_selection_panel():
+	if sprite_selection_panel:
+		sprite_selection_panel.visible = false
+	current_overlapping_hex = Vector2i(-1, -1)
+	current_overlapping_sprites.clear()
+	pending_card = null
+	pending_card_is_right_drag = false
+
+# 处理精灵选择按钮点击
+func _on_sprite_selection_button_pressed(sprite: Sprite):
+	if not pending_card:
+		_hide_sprite_selection_panel()
+		return
+	
+	var card = pending_card
+	var is_right_drag = pending_card_is_right_drag
+	
+	_hide_sprite_selection_panel()
+	
+	# 根据拖拽类型应用卡牌效果
+	if is_right_drag:
+		# 右键拖拽（弃牌行动）
+		_apply_right_drag_to_sprite(card, sprite)
+	else:
+		# 左键拖拽（正常使用卡牌）
+		_try_use_card_on_sprite(card, sprite)
+
+# 应用右键拖拽到精灵（弃牌行动）
+func _apply_right_drag_to_sprite(card: Card, target_sprite: Sprite):
+	if not game_manager:
+		return
+	
+	# 判断拖到的精灵是己方还是敌方
+	if target_sprite.owner_player_id == GameManager.HUMAN_PLAYER_ID:
+		# 拖到己方精灵 → 该精灵就是执行者，直接弹出移动/攻击选择
+		_enter_discard_action_selection_phase(card, target_sprite, target_sprite)
+	else:
+		# 拖到敌方精灵 → 需要先选择己方精灵作为执行者
+		_enter_discard_action_selection_phase(card, null, target_sprite)
+
+# 显示提示信息
+func _show_message(text: String):
+	if not message_label:
+		print(text)  # 如果没有标签，就打印到控制台
+		return
+	
+	message_label.text = text
+	message_label.visible = true
+	
+	# 重新启动定时器
+	if message_timer:
+		message_timer.stop()
+		message_timer.start()
+
+# 隐藏提示信息
+func _on_message_timer_timeout():
+	if message_label:
+		message_label.visible = false
+		message_label.text = ""
+
 # 提交弃牌移动行动
 func _submit_discard_move_action(target_pos: Vector2i):
 	if not game_manager or not discard_action_state.card or not discard_action_state.source_sprite:
 		return
-	
-	# 从手牌中移除卡牌
-	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
-	if hand_manager:
-		print("弃牌行动：从手牌中移除卡牌 ", discard_action_state.card.card_name, " 移除前手牌数量: ", hand_manager.hand_cards.size())
-		hand_manager.remove_card(discard_action_state.card, "discarded")
-		print("弃牌行动：移除后手牌数量: ", hand_manager.hand_cards.size())
-	else:
-		print("错误：无法获取手牌管理器")
 	
 	# 创建基本移动行动并添加到队列（不立即执行）
 	var source_sprite = discard_action_state.source_sprite
@@ -1529,19 +1854,24 @@ func _submit_discard_move_action(target_pos: Vector2i):
 		{"is_basic_action": true}  # 标记为基本行动
 	)
 	
-	# 添加到行动队列（基本行动不受限制，但检查一下以防万一）
-	var action_count_before = game_manager.action_resolver.actions.size()
-	game_manager.add_human_action(action)
-	var action_count_after = game_manager.action_resolver.actions.size()
+	# 先检查行动是否成功添加（在移除卡牌之前）
+	var result = game_manager.add_human_action(action)
 	
 	# 检查行动是否成功添加
-	if action_count_after == action_count_before:
-		print("无法添加基本移动行动")
-		# 返还卡牌
-		if hand_manager:
-			hand_manager.add_card(discard_action_state.card)
+	if not result.success:
+		_show_message(result.message)
+		# 行动失败，不消耗卡牌，直接退出
 		_exit_discard_action_phase()
 		return
+	
+	# 行动成功，从手牌中移除卡牌
+	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
+	if hand_manager:
+		print("弃牌行动：从手牌中移除卡牌 ", discard_action_state.card.card_name, " 移除前手牌数量: ", hand_manager.hand_cards.size())
+		hand_manager.remove_card(discard_action_state.card, "discarded")
+		print("弃牌行动：移除后手牌数量: ", hand_manager.hand_cards.size())
+	else:
+		print("错误：无法获取手牌管理器")
 	
 	# 显示预览
 	_update_action_preview()
