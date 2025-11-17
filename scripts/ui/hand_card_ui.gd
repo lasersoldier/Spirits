@@ -90,8 +90,8 @@ func _create_card_ui(card: Card) -> Control:
 	card_ui.custom_minimum_size = Vector2(card_width, card_height)
 	card_ui.size = Vector2(card_width, card_height)
 	# 不使用UIScaleManager缩放，直接设置固定大小
-	# 确保裁剪超出内容
-	card_ui.clip_contents = true
+	# 允许描述文字换行显示，不裁剪超出内容
+	card_ui.clip_contents = false
 	
 	# 连接拖动信号（转发给MainUI）
 	card_ui.card_drag_started.connect(_on_card_drag_started)
@@ -126,25 +126,27 @@ func _create_card_ui(card: Card) -> Control:
 		attr_container.add_child(attr_circle)
 	card_ui.add_child(attr_container)
 	
-	# 卡牌描述（中间区域，使用固定尺寸）
-	var desc_label = Label.new()
+	# 卡牌描述（中间区域，使用RichTextLabel）
+	var desc_label = RichTextLabel.new()
 	desc_label.text = card.effect_description
 	desc_label.position = Vector2(4, 28)
-	# 计算描述区域高度：总高度(200) - 顶部名称区域(28) - 底部能量区域(20) = 152
 	var desc_height = card_height - 28 - 20
 	desc_label.size = Vector2(card_width - 8, desc_height)
-	desc_label.add_theme_font_size_override("font_size", 10)
-	desc_label.add_theme_color_override("font_color", Color(0.88, 0.88, 0.88))  # 稍浅的白色
-	desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	desc_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # 智能换行
-	desc_label.clip_contents = true  # 裁剪超出内容
+	desc_label.custom_minimum_size = Vector2(card_width - 8, desc_height)
+	desc_label.add_theme_font_size_override("normal_font_size", 10)
+	desc_label.add_theme_color_override("default_color", Color(0.88, 0.88, 0.88))
+	desc_label.scroll_active = false  # 禁用滚动
+	desc_label.fit_content = true  # 自动适应内容
+	desc_label.bbcode_enabled = false  # 不启用富文本格式
+	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_label.clip_contents = false
 	card_ui.add_child(desc_label)
 	
-	# 能量消耗（底部，确保在卡牌内部）
+	# 能量消耗（底部，确保在卡牌内部，提高z-index确保在描述文字上方显示）
 	var cost_label = Label.new()
 	cost_label.text = "能量: " + str(card.energy_cost)
 	cost_label.position = Vector2(4, card_height - 18)  # 确保在卡牌内部
+	cost_label.z_index = 10  # 提高层级，确保在描述文字上方
 	cost_label.size = Vector2(card_width - 8, 16)
 	cost_label.add_theme_font_size_override("font_size", 12)
 	cost_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))  # 金色
