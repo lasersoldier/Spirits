@@ -39,7 +39,6 @@ var sprite_library: SpriteLibrary
 var card_library: CardLibrary
 var sprite_deploy: SpriteDeployInterface
 var deck_builder: DeckBuilder
-var public_card_pool: PublicCardPool
 var hand_managers: Dictionary = {}  # key: player_id, value: HandCardManager
 var energy_manager: EnergyManager
 var terrain_manager: TerrainManager
@@ -60,6 +59,8 @@ var sprite_renderer: SpriteRenderer
 
 # 玩家卡组
 var player_decks: Dictionary = {}  # key: player_id, value: Array[Card]
+# 玩家剩余套牌（用于抽卡）
+var player_remaining_decks: Dictionary = {}  # key: player_id, value: Array[Card]
 
 signal phase_changed(new_phase: GamePhase)
 signal round_started(round: int)
@@ -112,11 +113,10 @@ func _initialize_systems():
 	# 初始化行动结算器
 	action_resolver = ActionResolver.new(game_map, terrain_manager, card_interface, energy_manager)
 	
-	# 初始化公共卡池
-	public_card_pool = PublicCardPool.new()
-	
 	# 初始化争夺点管理器
-	contest_point_manager = ContestPointManager.new(game_map, energy_manager, public_card_pool)
+	contest_point_manager = ContestPointManager.new(game_map, energy_manager)
+	# 设置从玩家套牌中抽取卡牌的函数
+	contest_point_manager.draw_card_from_deck_func = draw_card_from_player_deck
 	
 	# 初始化胜利管理器
 	victory_manager = VictoryManager.new(game_map, contest_point_manager)
@@ -145,9 +145,6 @@ func _connect_signals():
 func start_game():
 	# 构建所有玩家的卡组
 	_build_all_decks()
-	
-	# 初始化公共卡池
-	public_card_pool.initialize_pool(player_decks)
 	
 	# 分发起手卡牌（在发出phase_changed信号之前，确保手牌已准备好）
 	_deal_starting_hands()
@@ -190,9 +187,21 @@ func _deal_starting_hands():
 		hand_managers[player_id] = hand_manager
 		
 		var deck = player_decks[player_id]
+		# 创建剩余套牌的副本（深拷贝）
+		var remaining_deck: Array[Card] = []
+		for card in deck:
+			remaining_deck.append(card.duplicate_card())
+		player_remaining_decks[player_id] = remaining_deck
+		
 		# 分发前5张作为起手
-		for i in range(min(5, deck.size())):
-			hand_manager.add_card(deck[i])
+		var starting_count = min(5, remaining_deck.size())
+		for i in range(starting_count):
+			var card = remaining_deck[i]
+			hand_manager.add_card(card)
+		
+		# 从剩余套牌中移除已分发的卡牌
+		remaining_deck = remaining_deck.slice(starting_count)
+		player_remaining_decks[player_id] = remaining_deck
 
 # 部署阶段：人类玩家部署
 func deploy_human_player(selected_sprite_ids: Array[String], deploy_positions: Array[Vector2i]):
@@ -573,18 +582,40 @@ func _check_victory_conditions():
 func end_round():
 	round_ended.emit(current_round)
 	
-	# 从公共卡池抽卡
+	# 从玩家自己的套牌中抽卡
 	for player_id in range(PLAYER_COUNT):
-		var card = public_card_pool.draw_card(player_id)
-		if card:
+		var remaining_deck = player_remaining_decks.get(player_id, [])
+		if remaining_deck.size() > 0:
+			# 从剩余套牌中抽取第一张
+			var card = remaining_deck[0]
+			remaining_deck.remove_at(0)
+			player_remaining_decks[player_id] = remaining_deck
+			
 			var hand = hand_managers[player_id]
 			var _discarded = hand.draw_card_with_discard(card)
 			# 如果返回了需要弃置的卡牌，可以在这里处理
+		else:
+			# 套牌用尽，可以在这里处理（例如洗牌重新开始，或者不再抽卡）
+			print("玩家 ", player_id, " 的套牌已用尽")
 	
 	# 下一回合
 	current_round += 1
 	if current_phase == GamePhase.PLAYING:
 		start_round()
+
+# 获取玩家剩余套牌（用于争夺点奖励）
+func _get_player_remaining_deck(player_id: int) -> Array[Card]:
+	return player_remaining_decks.get(player_id, [])
+
+# 从玩家剩余套牌中抽取卡牌（用于争夺点奖励）
+func draw_card_from_player_deck(player_id: int) -> Card:
+	var remaining_deck = player_remaining_decks.get(player_id, [])
+	if remaining_deck.size() > 0:
+		var card = remaining_deck[0]
+		remaining_deck.remove_at(0)
+		player_remaining_decks[player_id] = remaining_deck
+		return card
+	return null
 
 # 信号处理
 func _on_sprite_died(sprite: Sprite):

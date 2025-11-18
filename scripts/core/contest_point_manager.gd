@@ -35,17 +35,17 @@ class ContestPointState:
 # 系统引用
 var game_map: GameMap
 var energy_manager: EnergyManager
-var public_card_pool: PublicCardPool
+# 从玩家套牌中抽取卡牌的函数（由game_manager提供）
+var draw_card_from_deck_func: Callable
 
 signal bounty_generated(hex_coord: Vector2i)
 signal bounty_acquired(sprite: Sprite)
 signal bounty_lost(sprite: Sprite)
 signal contest_point_reward(point_id: int, player_id: int, reward: Dictionary)
 
-func _init(map: GameMap, energy_mgr: EnergyManager, card_pool: PublicCardPool):
+func _init(map: GameMap, energy_mgr: EnergyManager):
 	game_map = map
 	energy_manager = energy_mgr
-	public_card_pool = card_pool
 	
 	# 初始化公共争夺点
 	_initialize_contest_points()
@@ -202,13 +202,13 @@ func _give_contest_point_reward(point_id: int, sprite: Sprite, current_round_num
 	
 	# 奖励：随机卡牌1张 + 能量点1点
 	var reward = {
-		"card": null,  # 从公共卡池抽卡
+		"card": null,  # 从玩家自己的套牌中抽卡
 		"energy": 1
 	}
 	
-	# 从公共卡池抽卡
-	if not public_card_pool.is_empty():
-		reward.card = public_card_pool.draw_card(sprite.owner_player_id)
+	# 从玩家自己的套牌中抽卡
+	if draw_card_from_deck_func.is_valid():
+		reward.card = draw_card_from_deck_func.call(sprite.owner_player_id) as Card
 	
 	# 给予能量
 	energy_manager.on_contest_point_captured(sprite.owner_player_id)

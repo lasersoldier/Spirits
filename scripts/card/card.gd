@@ -103,10 +103,16 @@ func duplicate_card() -> Card:
 	new_card.energy_cost = energy_cost
 	new_card.card_type = card_type
 	new_card.effect_description = effect_description
-	new_card.effects = []
+	# 深拷贝效果数组
+	new_card.effects.clear()
 	for effect_entry in effects:
-		new_card.effects.append(effect_entry.duplicate(true))
+		if typeof(effect_entry) == TYPE_DICTIONARY:
+			new_card.effects.append(effect_entry.duplicate(true))
 	new_card.target_type = target_type
 	new_card.range_requirement = range_requirement
 	new_card.dual_attribute_range = dual_attribute_range
+	new_card.owner_player_id = owner_player_id
+	new_card.is_usable = is_usable
+	new_card.cooldown_rounds = cooldown_rounds
+	new_card.current_cooldown = current_cooldown
 	return new_card
