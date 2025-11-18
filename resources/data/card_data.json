@@ -8,7 +8,16 @@
       "type": "attack",
       "effect": "对目标精灵造成3点伤害，若目标处于森林地形，额外造成1点伤害",
       "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "single_attack",
+          "damage": 3,
+          "bonus_vs_terrain": [
+            { "terrain": "forest", "bonus": 1 }
+          ]
+        }
+      ]
     },
     {
       "id": "C02",
@@ -18,7 +27,13 @@
       "type": "attack",
       "effect": "对直线2格内目标精灵造成2点伤害，无视中间1格地形",
       "target_type": "enemy_sprite",
-      "range_requirement": "line_2_tiles"
+      "range_requirement": "line_2_tiles",
+      "effects": [
+        {
+          "tag": "single_attack",
+          "damage": 2
+        }
+      ]
     },
     {
       "id": "C03",
@@ -26,9 +41,15 @@
       "attributes": ["water"],
       "energy_cost": 1,
       "type": "terrain",
-      "effect": "在自身精灵相邻1格创建1格水流地形，持续3回合",
+      "effect": "在自身精灵相邻1格创建1格水流地形",
       "target_type": "adjacent_tile",
-      "range_requirement": "adjacent"
+      "range_requirement": "adjacent",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "water"
+        }
+      ]
     },
     {
       "id": "C04",
@@ -38,7 +59,16 @@
       "type": "attack",
       "effect": "对目标精灵造成2点伤害，若目标处于岩石地形，伤害+1",
       "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "single_attack",
+          "damage": 2,
+          "bonus_vs_terrain": [
+            { "terrain": "rock", "bonus": 1 }
+          ]
+        }
+      ]
     },
     {
       "id": "C05",
@@ -48,7 +78,13 @@
       "type": "attack",
       "effect": "对目标精灵及相邻1格精灵造成2点伤害",
       "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "single_attack",
+          "damage": 2
+        }
+      ]
     },
     {
       "id": "C06",
@@ -58,7 +94,14 @@
       "type": "support",
       "effect": "自身水、火属性精灵各恢复2点血量，同时对周围1格敌方精灵造成1点伤害",
       "target_type": "self",
-      "range_requirement": "none"
+      "range_requirement": "none",
+      "effects": [
+        {
+          "tag": "heal",
+          "amount": 2,
+          "target": "self"
+        }
+      ]
     },
     {
       "id": "C07",
@@ -68,7 +111,14 @@
       "type": "attack",
       "effect": "对目标精灵造成3点伤害，同时将目标所在地形降低1级（最低1级）",
       "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "single_attack",
+          "damage": 3,
+          "terrain_height_delta": -1
+        }
+      ]
     },
     {
       "id": "C08",
@@ -76,9 +126,15 @@
       "attributes": ["wind", "water"],
       "energy_cost": 2,
       "type": "terrain",
-      "effect": "在指定3格范围内创建1格水流地形（需与自身精灵相邻），持续3回合",
+      "effect": "在指定3格范围内创建1格水流地形（需与自身精灵相邻）",
       "target_type": "adjacent_tile",
-      "range_requirement": "adjacent_3_tiles"
+      "range_requirement": "adjacent_3_tiles",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "water"
+        }
+      ]
     },
     {
       "id": "C09",
@@ -88,7 +144,14 @@
       "type": "attack",
       "effect": "对目标精灵及相邻1格精灵造成2点伤害，同时将目标所在地形降低1级（最低1级）",
       "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "single_attack",
+          "damage": 2,
+          "terrain_height_delta": -1
+        }
+      ]
     },
     {
       "id": "C10",
@@ -96,9 +159,16 @@
       "attributes": ["water", "rock"],
       "energy_cost": 2,
       "type": "terrain",
-      "effect": "在自身精灵相邻1格创建1格3级岩石地形，持续2回合",
+      "effect": "在自身精灵相邻1格创建1格3级岩石地形",
       "target_type": "adjacent_tile",
-      "range_requirement": "adjacent"
+      "range_requirement": "adjacent",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "rock",
+          "set_height": 3
+        }
+      ]
     },
     {
       "id": "C11",
@@ -108,7 +178,14 @@
       "type": "terrain",
       "effect": "将目标地形降低1级（最低1级）",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "normal",
+          "height_delta": -1
+        }
+      ]
     },
     {
       "id": "C12",
@@ -118,7 +195,14 @@
       "type": "terrain",
       "effect": "将目标地形降低2级（最低1级）",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "normal",
+          "height_delta": -2
+        }
+      ]
     },
     {
       "id": "C13",
@@ -128,7 +212,14 @@
       "type": "terrain",
       "effect": "将目标地形抬高1级（最高3级）",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "normal",
+          "height_delta": 1
+        }
+      ]
     },
     {
       "id": "C14",
@@ -138,7 +229,14 @@
       "type": "terrain",
       "effect": "将目标地形抬高2级（最高3级）",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "normal",
+          "height_delta": 2
+        }
+      ]
     },
     {
       "id": "C15",
@@ -146,9 +244,15 @@
       "attributes": ["water"],
       "energy_cost": 2,
       "type": "terrain",
-      "effect": "在指定位置创建1格水流地形，持续5回合",
+      "effect": "在指定位置创建1格水流地形",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "water"
+        }
+      ]
     },
     {
       "id": "C16",
@@ -156,9 +260,15 @@
       "attributes": ["water"],
       "energy_cost": 3,
       "type": "terrain",
-      "effect": "在指定位置创建1格水流地形，持续4回合，可多次使用创建多格",
+      "effect": "在指定位置创建1格水流地形，可多次使用创建多格",
       "target_type": "adjacent_tile",
-      "range_requirement": "adjacent_2_tiles"
+      "range_requirement": "adjacent_2_tiles",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "water"
+        }
+      ]
     },
     {
       "id": "C17",
@@ -166,9 +276,16 @@
       "attributes": ["water"],
       "energy_cost": 4,
       "type": "terrain",
-      "effect": "在指定位置创建1格水流地形（永久），同时将地形抬高1级（最高3级）",
+      "effect": "在指定位置创建1格水流地形，同时将地形抬高1级（最高3级）",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "water",
+          "height_delta": 1
+        }
+      ]
     },
     {
       "id": "C18",
@@ -176,9 +293,16 @@
       "attributes": ["water"],
       "energy_cost": 2,
       "type": "terrain",
-      "effect": "在指定位置创建1格水流地形，持续3回合，同时将地形降低1级（最低1级）",
+      "effect": "在指定位置创建1格水流地形，同时将地形降低1级（最低1级）",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "water",
+          "height_delta": -1
+        }
+      ]
     },
     {
       "id": "C19",
@@ -188,7 +312,14 @@
       "type": "terrain",
       "effect": "将目标地形调整为1级",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "normal",
+          "set_height": 1
+        }
+      ]
     },
     {
       "id": "C20",
@@ -196,9 +327,16 @@
       "attributes": ["rock"],
       "energy_cost": 3,
       "type": "terrain",
-      "effect": "将目标地形抬高至3级，持续6回合",
+      "effect": "将目标地形抬高至3级",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "normal",
+          "set_height": 3
+        }
+      ]
     },
     {
       "id": "C21",
@@ -206,9 +344,16 @@
       "attributes": ["rock"],
       "energy_cost": 3,
       "type": "terrain",
-      "effect": "将目标地形降低至1级，持续6回合",
+      "effect": "将目标地形降低至1级",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "normal",
+          "set_height": 1
+        }
+      ]
     },
     {
       "id": "C22",
@@ -216,19 +361,16 @@
       "attributes": ["water", "rock"],
       "energy_cost": 3,
       "type": "terrain",
-      "effect": "在指定位置创建1格水流地形，同时将地形抬高1级（最高3级），持续4回合",
+      "effect": "在指定位置创建1格水流地形，同时将地形抬高1级（最高3级）",
       "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range"
-    },
-    {
-      "id": "C23",
-      "name": "水流通道",
-      "attributes": ["water"],
-      "energy_cost": 2,
-      "type": "terrain",
-      "effect": "在自身精灵相邻1格创建1格水流地形，如果目标地形已存在，将其延长2回合持续时间",
-      "target_type": "adjacent_tile",
-      "range_requirement": "adjacent"
+      "range_requirement": "within_attack_range",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "terrain_type": "water",
+          "height_delta": 1
+        }
+      ]
     }
   ]
 }

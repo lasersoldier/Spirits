@@ -430,6 +430,77 @@ func _record_action(action: ActionResolver.Action):
 	
 	sprite_action_counts[sprite_id] = counts
 
+# 撤销行动记录（更新计数）
+func _unrecord_action(action: ActionResolver.Action):
+	if not action.sprite:
+		return  # 没有精灵的行动不记录
+	
+	var sprite_id = action.sprite.sprite_id
+	var counts = sprite_action_counts.get(sprite_id, {"move": 0, "attack": 0})
+	var is_basic_action = action.data.get("is_basic_action", false)
+	
+	# 减少计数
+	match action.action_type:
+		ActionResolver.ActionType.MOVE:
+			# 移动行动：基本移动和卡牌移动都计数
+			counts.move = max(0, counts.move - 1)
+		ActionResolver.ActionType.ATTACK:
+			# 攻击行动：只有卡牌攻击计数，基本攻击不计数
+			if not is_basic_action:
+				counts.attack = max(0, counts.attack - 1)
+		ActionResolver.ActionType.TERRAIN, ActionResolver.ActionType.EFFECT:
+			# 地形变化、效果：只有卡牌行动计数，基本行动不计数
+			if not is_basic_action:
+				counts.attack = max(0, counts.attack - 1)
+	
+	sprite_action_counts[sprite_id] = counts
+
+# 取消行动（从队列中移除并返回卡牌到手牌）
+# 返回 Dictionary: {"success": bool, "message": String}
+func cancel_action(action: ActionResolver.Action) -> Dictionary:
+	if actions_submitted.get(HUMAN_PLAYER_ID, false):
+		return {"success": false, "message": "回合已提交，无法取消行动"}
+	
+	# 检查行动是否存在
+	var action_exists = false
+	for a in action_resolver.actions:
+		if a == action:
+			action_exists = true
+			break
+	
+	if not action_exists:
+		return {"success": false, "message": "找不到要取消的行动"}
+	
+	# 如果行动包含卡牌，先检查手牌是否有空间
+	if action.card:
+		var hand_manager = hand_managers.get(HUMAN_PLAYER_ID)
+		if hand_manager:
+			if hand_manager.is_hand_full():
+				return {"success": false, "message": "手牌已满，无法取消此行动"}
+	
+	# 从行动队列中移除
+	var removed_action = action_resolver.remove_action_by_reference(action)
+	if not removed_action:
+		return {"success": false, "message": "找不到要取消的行动"}
+	
+	# 撤销行动计数
+	_unrecord_action(removed_action)
+	
+	# 如果行动包含卡牌，返回手牌
+	if removed_action.card:
+		var hand_manager = hand_managers.get(HUMAN_PLAYER_ID)
+		if hand_manager:
+			print("取消行动：尝试返回卡牌 ", removed_action.card.card_name, " 到手牌")
+			print("取消行动：当前手牌数量: ", hand_manager.hand_cards.size(), " 手牌上限: ", HandCardManager.MAX_HAND_SIZE)
+			var added = hand_manager.add_card(removed_action.card)
+			if added:
+				print("取消行动：成功返回卡牌到手牌，当前手牌数量: ", hand_manager.hand_cards.size())
+			else:
+				# 这种情况理论上不应该发生，因为我们已经检查过了
+				print("警告：取消行动时卡牌无法返回手牌（手牌可能已满）")
+	
+	return {"success": true, "message": "行动已取消"}
+
 # 检查是否所有玩家都已提交
 func _check_all_submitted():
 	var all_submitted = true

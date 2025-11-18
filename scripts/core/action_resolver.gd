@@ -53,6 +53,21 @@ func add_action(player_id: int, action_type: ActionType, sprite: Sprite, target:
 func clear_actions():
 	actions.clear()
 
+# 移除指定索引的行动
+func remove_action(index: int) -> Action:
+	if index < 0 or index >= actions.size():
+		return null
+	var action = actions[index]
+	actions.remove_at(index)
+	return action
+
+# 通过行动对象引用移除行动
+func remove_action_by_reference(action: Action) -> Action:
+	var index = actions.find(action)
+	if index >= 0:
+		return remove_action(index)
+	return null
+
 # 结算所有行动（按优先级）
 func resolve_all_actions():
 	# 按优先级分组行动
@@ -199,15 +214,8 @@ func execute_attack(sprite: Sprite, target: Sprite, is_basic_action: bool = fals
 	if not terrain_manager.can_attack_height(attacker_level, target_level, sprite.attack_height_limit):
 		return {"success": false, "message": "高度限制：无法攻击该目标"}
 	
-	# 计算伤害
+	# 计算伤害（基本攻击固定1点）
 	var damage = 1
-	if card and not is_basic_action:
-		# 卡牌攻击：使用卡牌伤害计算
-		damage = card_interface._calculate_damage(card, sprite, target, game_map)
-		# 消耗能量
-		if player_id >= 0:
-			energy_manager.use_card(player_id, card.energy_cost)
-		card.use()
 	# 基本行动：固定1点伤害，不消耗能量
 	
 	# 执行攻击

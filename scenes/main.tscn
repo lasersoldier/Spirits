@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://cqy7gjifllxk5" path="res://scripts/ui/main_ui.gd" id="2_main_ui"]
 [ext_resource type="Script" uid="uid://bub6oy0nm4w0j" path="res://scripts/map/game_map.gd" id="3_game_map"]
 [ext_resource type="Script" uid="uid://dur0wxo4mtwx4" path="res://scripts/utils/camera_controller.gd" id="4_camera_controller"]
-[ext_resource type="Script" path="res://scripts/ui/hand_card_ui.gd" id="5_hand_card_ui"]
+[ext_resource type="Script" uid="uid://bq8x3m2n1p4r5" path="res://scripts/ui/hand_card_ui.gd" id="5_hand_card_ui"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1_game_manager")
@@ -60,7 +60,6 @@ anchor_top = 0.75
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -500.0
-offset_top = 0.0
 offset_right = 500.0
 offset_bottom = -10.0
 grow_horizontal = 2

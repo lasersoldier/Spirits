@@ -659,7 +659,9 @@ func _try_use_card_on_sprite(card: Card, target_sprite: Sprite):
 	
 	# 检查是否是己方精灵
 	if target_sprite.owner_player_id != GameManager.HUMAN_PLAYER_ID:
-		print("不能对敌方精灵使用卡牌")
+		var enemy_msg = "不能对敌方精灵使用卡牌"
+		print(enemy_msg)
+		_show_message(enemy_msg)
 		return
 	
 	# 检查卡牌是否可以使用（不需要能量，能量只用于租用精灵）
@@ -673,18 +675,24 @@ func _try_use_card_on_sprite(card: Card, target_sprite: Sprite):
 		# 进入卡牌使用阶段，高亮可用的目标
 		_enter_card_use_phase(card, target_sprite)
 	else:
-		print("不能使用卡牌: ", check_result.reason)
+		var reason = check_result.reason
+		if reason.is_empty():
+			reason = "无法对该精灵使用此卡牌"
+		print("不能使用卡牌: ", reason)
+		_show_message(reason)
 
 # 进入卡牌使用阶段
 func _enter_card_use_phase(card: Card, source_sprite: Sprite):
 	if not game_manager:
 		return
 	
+	var target_mode = _get_card_target_mode(card)
+	
 	# 设置卡牌使用状态
 	card_use_state.active = true
 	card_use_state.card = card
 	card_use_state.source_sprite = source_sprite
-	card_use_state.target_type = card.card_type
+	card_use_state.target_type = target_mode
 	
 	# 显示取消按钮
 	if cancel_card_button:
@@ -695,7 +703,7 @@ func _enter_card_use_phase(card: Card, source_sprite: Sprite):
 	
 	var card_interface = game_manager.card_interface
 	
-	match card.card_type:
+	match target_mode:
 		"attack":
 			# 攻击卡牌：高亮可攻击的精灵（即使没有目标也进入阶段）
 			var targets = card_interface.get_attackable_targets(card, source_sprite, game_manager.all_sprites, game_manager.game_map)
@@ -719,7 +727,23 @@ func _enter_card_use_phase(card: Card, source_sprite: Sprite):
 			_highlight_support_target(source_sprite)
 			card_use_state.highlighted_sprites = [source_sprite]
 	
-	print("进入卡牌使用阶段: ", card.card_name, " 类型: ", card.card_type)
+	print("进入卡牌使用阶段: ", card.card_name, " 类型: ", target_mode)
+
+# 根据卡牌效果标签推断目标模式
+func _get_card_target_mode(card: Card) -> String:
+	if card and card.effects.size() > 0:
+		var primary_effect = card.effects[0]
+		if typeof(primary_effect) == TYPE_DICTIONARY:
+			var tag: String = primary_effect.get("tag", "")
+			match tag:
+				"single_attack":
+					return "attack"
+				"terrain_change", "terrain_extend_duration":
+					return "terrain"
+				"heal":
+					return "support"
+	
+	return card.card_type
 
 # 清除卡牌使用高亮
 func _clear_card_use_highlights():
@@ -790,6 +814,7 @@ func _handle_card_target_selection(hex_coord: Vector2i):
 					_confirm_card_use(card, source_sprite, target)
 					return
 			print("未点击有效的攻击目标")
+			_show_message("请选择高亮的攻击目标")
 		
 		"terrain":
 			# 地形卡牌：检查点击的是否是高亮的六边形
@@ -798,6 +823,7 @@ func _handle_card_target_selection(hex_coord: Vector2i):
 				_confirm_card_use(card, source_sprite, hex_coord)
 				return
 			print("未点击有效的地形放置位置")
+			_show_message("请点击高亮的地形位置")
 		
 		"support":
 			# 辅助卡牌：检查点击的是否是自己
@@ -806,6 +832,7 @@ func _handle_card_target_selection(hex_coord: Vector2i):
 				_confirm_card_use(card, source_sprite, source_sprite)
 				return
 			print("未点击自己的精灵")
+			_show_message("请点击己方精灵以施放辅助卡")
 
 # 确认使用卡牌
 func _confirm_card_use(card: Card, source_sprite: Sprite, target: Variant):
@@ -816,7 +843,8 @@ func _confirm_card_use(card: Card, source_sprite: Sprite, target: Variant):
 	
 	# 确定行动类型
 	var action_type: ActionResolver.ActionType
-	match card.card_type:
+	var target_mode = _get_card_target_mode(card)
+	match target_mode:
 		"attack":
 			action_type = ActionResolver.ActionType.ATTACK
 		"terrain":
@@ -824,7 +852,7 @@ func _confirm_card_use(card: Card, source_sprite: Sprite, target: Variant):
 		"support":
 			action_type = ActionResolver.ActionType.EFFECT
 		_:
-			print("未知的卡牌类型: ", card.card_type)
+			print("未知的卡牌类型: ", target_mode)
 			_exit_card_use_phase()
 			return
 	
@@ -1648,7 +1676,7 @@ func _submit_discard_attack_action(target_sprite: Sprite):
 		ActionResolver.ActionType.ATTACK,
 		source_sprite,
 		target_sprite,
-		null,  # 基本行动不使用卡牌
+		discard_action_state.card,  # 保存卡牌引用以便取消时返回
 		{"is_basic_action": true}  # 标记为基本行动
 	)
 	
@@ -1850,7 +1878,7 @@ func _submit_discard_move_action(target_pos: Vector2i):
 		ActionResolver.ActionType.MOVE,
 		source_sprite,
 		target_pos,
-		null,  # 基本行动不使用卡牌
+		discard_action_state.card,  # 保存卡牌引用以便取消时返回
 		{"is_basic_action": true}  # 标记为基本行动
 	)
 	
@@ -2004,13 +2032,23 @@ func _add_preview_item(preview: Dictionary):
 		return
 	
 	var item_panel = Panel.new()
-	item_panel.custom_minimum_size = UIScaleManager.scale_vec2(Vector2(260, 60))
+	# 增加宽度以确保能显示取消按钮（260 + 70 + 10间距 + 10边距 = 350，但面板只有260，所以增加到280）
+	item_panel.custom_minimum_size = UIScaleManager.scale_vec2(Vector2(280, 60))
 	
+	# 使用 HBoxContainer 来布局左侧信息和右侧取消按钮
+	var hbox = HBoxContainer.new()
+	hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hbox.offset_left = UIScaleManager.scale_value(5)
+	hbox.offset_top = UIScaleManager.scale_value(5)
+	hbox.offset_right = -UIScaleManager.scale_value(5)
+	hbox.offset_bottom = -UIScaleManager.scale_value(5)
+	hbox.add_theme_constant_override("separation", UIScaleManager.scale_value_int(10))
+	item_panel.add_child(hbox)
+	
+	# 左侧信息容器
 	var vbox = VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	vbox.position = UIScaleManager.scale_vec2(Vector2(5, 5))
-	vbox.size = UIScaleManager.scale_vec2(Vector2(250, 50))
-	item_panel.add_child(vbox)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.add_child(vbox)
 	
 	# 类型和精灵名称
 	var type_label = Label.new()
@@ -2026,8 +2064,42 @@ func _add_preview_item(preview: Dictionary):
 	UIScaleManager.apply_scale_to_label(desc_label, 14)
 	vbox.add_child(desc_label)
 	
+	# 右侧取消按钮
+	var cancel_button = Button.new()
+	cancel_button.text = "取消"
+	cancel_button.custom_minimum_size = UIScaleManager.scale_vec2(Vector2(70, 50))
+	# 按钮不需要特殊的 size_flags，因为在 HBoxContainer 中它会自动占用所需空间
+	UIScaleManager.apply_scale_to_button(cancel_button, 14)
+	
+	# 连接按钮点击事件
+	var action = preview.action
+	cancel_button.pressed.connect(func(): _on_cancel_action_button_pressed(action))
+	
+	hbox.add_child(cancel_button)
+	
 	action_preview_list.add_child(item_panel)
 	action_preview_items.append(item_panel)
+
+# 处理取消行动按钮点击
+func _on_cancel_action_button_pressed(action: ActionResolver.Action):
+	if not game_manager:
+		return
+	
+	# 调用 GameManager 的取消行动方法
+	var result = game_manager.cancel_action(action)
+	
+	# 显示结果消息
+	if result.has("message") and not result.message.is_empty():
+		if result.success:
+			_show_message(result.message)
+		else:
+			_show_message(result.message)
+	
+	# 刷新行动预览面板
+	_update_action_preview()
+	
+	# 不需要手动更新手牌UI，因为 hand_updated 信号会自动触发 UI 更新
+	# 如果卡牌成功返回手牌，hand_updated 信号会由 HandCardManager 发出
 
 # 清除预览项
 func _clear_action_preview_items():

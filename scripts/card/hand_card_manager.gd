@@ -21,11 +21,16 @@ func _init(p_id: int):
 
 # 添加卡牌到手牌
 func add_card(card: Card) -> bool:
+	print("HandCardManager: add_card 被调用，卡牌: ", card.card_name if card else "null")
+	print("HandCardManager: 当前手牌数量: ", hand_cards.size(), " 上限: ", MAX_HAND_SIZE)
 	if hand_cards.size() >= MAX_HAND_SIZE:
 		# 手牌已满，需要弃牌
+		print("HandCardManager: 手牌已满，无法添加卡牌")
 		return false
 	
 	hand_cards.append(card)
+	print("HandCardManager: 成功添加卡牌，当前手牌数量: ", hand_cards.size())
+	print("HandCardManager: 手牌中的卡牌: ", hand_cards.map(func(c): return c.card_name))
 	hand_updated.emit(player_id, hand_cards.size())
 	return true
 

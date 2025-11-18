@@ -1,0 +1,62 @@
+[gd_scene load_steps=2 format=3 uid="uid://encyclopedia_panel"]
+
+[ext_resource type="Script" path="res://addons/encyclopedia/ui/encyclopedia_panel.gd" id="1_encyclopedia"]
+
+[node name="EncyclopediaPanel" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_encyclopedia")
+
+[node name="HSplitContainer" type="HSplitContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+split_offset = 300
+
+[node name="LeftPanel" type="VBoxContainer" parent="HSplitContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CategoryOption" type="OptionButton" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="EntryList" type="ItemList" parent="HSplitContainer/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RightPanel" type="VBoxContainer" parent="HSplitContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DetailPanel" type="VBoxContainer" parent="HSplitContainer/RightPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HSplitContainer/RightPanel/DetailPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="TitleLabel" type="Label" parent="HSplitContainer/RightPanel/DetailPanel/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "选择词条查看详情"
+
+[node name="HSeparator" type="HSeparator" parent="HSplitContainer/RightPanel/DetailPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="ContentLabel" type="RichTextLabel" parent="HSplitContainer/RightPanel/DetailPanel/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+scroll_following = true
+text = ""
+

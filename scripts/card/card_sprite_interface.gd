@@ -18,22 +18,24 @@ func can_use_card_on_sprite(card: Card, target_sprite: Sprite, all_friendly_spri
 	if card.is_single_attribute():
 		# 单属性卡牌：目标精灵属性必须与卡牌属性相同
 		var required_attr = card.attributes[0]
+		var current_attr = target_sprite.attribute
 		if target_sprite.attribute == required_attr:
 			result.can_use = true
 		else:
-			result.reason = "目标精灵属性不匹配，需要" + required_attr + "属性"
+			result.reason = "该卡牌需要" + required_attr + "属性的精灵，当前精灵为" + (current_attr if current_attr != "" else "无属性")
 	
 	elif card.is_dual_attribute():
 		# 双属性卡牌：目标精灵属性必须是双属性之一
 		var attr1 = card.attributes[0]
 		var attr2 = card.attributes[1]
+		var current_attr = target_sprite.attribute
 		
-		if target_sprite.attribute != attr1 and target_sprite.attribute != attr2:
-			result.reason = "目标精灵属性不匹配，需要" + attr1 + "或" + attr2 + "属性"
+		if current_attr != attr1 and current_attr != attr2:
+			result.reason = "该卡牌需要" + attr1 + "或" + attr2 + "属性的精灵，当前精灵为" + (current_attr if current_attr != "" else "无属性")
 			return result
 		
 		# 确定目标精灵的属性，以及需要寻找的另一个属性
-		var target_attr = target_sprite.attribute
+		var target_attr = current_attr
 		var required_partner_attr: String
 		if target_attr == attr1:
 			required_partner_attr = attr2
@@ -65,7 +67,9 @@ func can_use_card_on_sprite(card: Card, target_sprite: Sprite, all_friendly_spri
 			break
 		
 		if not found_partner:
-			result.reason = "目标精灵" + str(card.dual_attribute_range) + "格范围内没有" + required_partner_attr + "属性的己方精灵"
+			result.reason = "还需要在" + str(card.dual_attribute_range) + "格范围内拥有" + required_partner_attr + "属性的己方精灵"
+	else:
+		result.reason = "卡牌未配置可用的属性要求"
 	
 	return result
 
@@ -139,136 +143,210 @@ func apply_card_effect(card: Card, source_sprite: Sprite, target: Variant, game_
 		"message": ""
 	}
 	
-	match card.card_type:
-		"attack":
-			# 攻击效果
-			if target is Sprite:
-				var damage = _calculate_damage(card, source_sprite, target, game_map)
-				target.take_damage(damage)
-				result.success = true
-				result.effect_applied = true
-				result.message = "对" + target.sprite_name + "造成" + str(damage) + "点伤害"
-				
-				# 检查攻击卡牌是否附带地形修改效果（如 C07、C09）
-				var target_terrain_coord = target.hex_position
-				var height_delta = _parse_height_modification(card.effect_description, target_terrain_coord, game_map)
-				if height_delta != 0:
-					# 修改目标精灵所在地形的高度
-					var terrain_type = TerrainTile.TerrainType.NORMAL  # 保持原地形类型
-					terrain_manager.request_terrain_change(source_sprite.owner_player_id, target_terrain_coord, terrain_type, -1, -1, height_delta)
-					
-					# 更新消息
-					if height_delta > 0:
-						result.message += "，抬高了目标所在地形" + str(height_delta) + "级"
-					elif height_delta < 0:
-						result.message += "，降低了目标所在地形" + str(abs(height_delta)) + "级"
+	if card.effects.is_empty():
+		result.message = "卡牌未配置结构化效果"
+		return result
+	
+	var messages: Array[String] = []
+	for effect in card.effects:
+		var effect_result = _apply_effect_by_tag(effect, card, source_sprite, target, game_map, terrain_manager)
+		var error_message: String = effect_result.get("error", "")
+		if not error_message.is_empty():
+			result.message = error_message
+			return result
 		
-		"terrain":
-			# 地形效果
-			if target is Vector2i:
-				var terrain_type = _get_terrain_type_from_card(card)
-				var height_delta = _parse_height_modification(card.effect_description, target, game_map)
-				var duration = _parse_duration(card.effect_description)
-				
-				# 特殊效果处理
-				# C23: 延长已有地形持续时间（如果已存在）
-				if card.card_id == "C23":
-					var existing_terrain = game_map.get_terrain(target)
-					if existing_terrain and existing_terrain.terrain_type == TerrainTile.TerrainType.WATER:
-						# 延长持续时间
-						if existing_terrain.effect_duration > 0:
-							existing_terrain.effect_duration += 2
-						result.success = true
-						result.effect_applied = true
-						result.message = "延长了水流地形持续时间2回合"
-						return result
-				
-				# 对于纯高度变化类卡牌（只改变高度，不创建特殊地形类型），如果没有明确标注持续时间，应该是永久效果
-				# 判断标准：地形类型为NORMAL且高度有变化，且效果描述中没有持续时间信息
-				if terrain_type == TerrainTile.TerrainType.NORMAL and height_delta != 0:
-					# 检查效果描述中是否有持续时间信息
-					var has_duration_info = "持续" in card.effect_description or "永久" in card.effect_description
-					if not has_duration_info:
-						# 没有持续时间信息，设置为永久效果
-						duration = -1
-				
-				# 提交地形变化请求（包含高度修改）
-				terrain_manager.request_terrain_change(source_sprite.owner_player_id, target, terrain_type, -1, duration, height_delta)
-				result.success = true
-				result.effect_applied = true
-				
-				# 生成消息
-				var message_parts: Array[String] = []
-				if height_delta > 0:
-					message_parts.append("抬高了" + str(height_delta) + "级")
-				elif height_delta < 0:
-					message_parts.append("降低了" + str(abs(height_delta)) + "级")
-				
-				if terrain_type != TerrainTile.TerrainType.NORMAL:
-					message_parts.append("创建了" + TerrainTile.TerrainType.keys()[terrain_type] + "地形")
-				else:
-					message_parts.append("修改了地形")
-				
-				if duration == -1:
-					message_parts.append("（永久）")
-				elif duration > 0:
-					message_parts.append("持续" + str(duration) + "回合")
-				
-				result.message = "、".join(message_parts)
-		
-		"support":
-			# 辅助效果
-			if target is Sprite:
-				var heal_amount = _calculate_heal(card, source_sprite, target)
-				target.heal(heal_amount)
-				result.success = true
-				result.effect_applied = true
-				result.message = target.sprite_name + "恢复了" + str(heal_amount) + "点血量"
+		if effect_result.get("success", false):
+			result.effect_applied = true
+			var msg = effect_result.get("message", "")
+			if not msg.is_empty():
+				messages.append(msg)
+	
+	result.success = result.effect_applied
+	if messages.size() > 0:
+		result.message = "；".join(messages)
 	
 	return result
 
-# 计算伤害（简化版）
-func _calculate_damage(card: Card, _source: Sprite, target: Sprite, game_map: GameMap) -> int:
-	var base_damage = 2  # 默认伤害
-	
-	# 根据卡牌ID设置特定伤害
-	match card.card_id:
-		"C01":  # 火焰冲击
-			base_damage = 3
-			var terrain = game_map.get_terrain(target.hex_position)
-			if terrain and terrain.terrain_type == TerrainTile.TerrainType.FOREST:
-				base_damage += 1
-		"C02":  # 风刃
-			base_damage = 2
-		"C04":  # 岩击
-			base_damage = 2
-			var terrain = game_map.get_terrain(target.hex_position)
-			if terrain and terrain.terrain_type == TerrainTile.TerrainType.ROCK:
-				base_damage += 1
-		"C05", "C09":  # 风火斩、风岩斩
-			base_damage = 2
-		"C07":  # 火岩爆
-			base_damage = 3
-	
-	return base_damage
-
-# 计算治疗量（简化版）
-func _calculate_heal(card: Card, _source: Sprite, _target: Sprite) -> int:
-	match card.card_id:
-		"C06":  # 水火共鸣
-			return 2
+func _apply_effect_by_tag(effect: Dictionary, card: Card, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager) -> Dictionary:
+	var tag: String = effect.get("tag", "")
+	match tag:
+		"single_attack":
+			return _effect_single_attack(effect, source_sprite, target, game_map, terrain_manager)
+		"terrain_change":
+			return _effect_terrain_change(effect, source_sprite, target, game_map, terrain_manager)
+		"terrain_extend_duration":
+			return _effect_terrain_extend_duration(effect, source_sprite, target, game_map)
+		"heal":
+			return _effect_heal(effect, source_sprite, target)
 		_:
-			return 0
+			return {
+				"success": false,
+				"error": "未知的卡牌效果标签: " + tag
+			}
 
-# 从卡牌获取地形类型
-func _get_terrain_type_from_card(card: Card) -> TerrainTile.TerrainType:
-	match card.card_id:
-		"C03", "C08", "C15", "C16", "C17", "C18", "C22", "C23":  # 水流相关卡牌
+func _effect_single_attack(effect: Dictionary, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager) -> Dictionary:
+	if not (target is Sprite):
+		return {"success": false, "error": "攻击卡牌需要精灵目标"}
+	
+	var damage: int = effect.get("damage", 0)
+	var terrain = game_map.get_terrain(target.hex_position)
+	var bonus_vs_terrain = effect.get("bonus_vs_terrain", [])
+	
+	for bonus_def in bonus_vs_terrain:
+		if typeof(bonus_def) != TYPE_DICTIONARY:
+			continue
+		var terrain_name: String = bonus_def.get("terrain", "")
+		var bonus_value: int = bonus_def.get("bonus", 0)
+		if terrain and _terrain_matches_string(terrain, terrain_name):
+			damage += bonus_value
+	
+	damage = max(damage, 0)
+	if damage > 0:
+		target.take_damage(damage)
+	
+	var height_delta: int = effect.get("terrain_height_delta", 0)
+	if height_delta != 0:
+		terrain_manager.request_terrain_change(
+			source_sprite.owner_player_id,
+			target.hex_position,
+			TerrainTile.TerrainType.NORMAL,
+			-1,
+			-1,
+			height_delta
+		)
+	
+	var msg_parts: Array[String] = []
+	msg_parts.append("对" + target.sprite_name + "造成" + str(damage) + "点伤害")
+	if height_delta > 0:
+		msg_parts.append("抬高该地形" + str(height_delta) + "级")
+	elif height_delta < 0:
+		msg_parts.append("降低该地形" + str(abs(height_delta)) + "级")
+	
+	return {
+		"success": true,
+		"message": "，".join(msg_parts)
+	}
+
+func _effect_terrain_change(effect: Dictionary, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager) -> Dictionary:
+	var hex_coord = _resolve_hex_coord(target)
+	if hex_coord == null:
+		return {"success": false, "error": "地形卡牌需要有效的六边形坐标"}
+	
+	var terrain_type_name: String = effect.get("terrain_type", "normal")
+	var terrain_type = _terrain_type_from_string(terrain_type_name)
+	var duration: int = effect.get("duration", -1)
+	var set_height: int = effect.get("set_height", -1)
+	var height_delta: int = effect.get("height_delta", 0)
+	
+	terrain_manager.request_terrain_change(
+		source_sprite.owner_player_id,
+		hex_coord,
+		terrain_type,
+		set_height,
+		duration,
+		height_delta
+	)
+	
+	var msg_parts: Array[String] = []
+	if height_delta > 0:
+		msg_parts.append("抬高地形" + str(height_delta) + "级")
+	elif height_delta < 0:
+		msg_parts.append("降低地形" + str(abs(height_delta)) + "级")
+	
+	if set_height > 0:
+		msg_parts.append("将地形设为" + str(set_height) + "级")
+	
+	if terrain_type != TerrainTile.TerrainType.NORMAL:
+		msg_parts.append("创建" + _terrain_type_to_text(terrain_type) + "地形")
+	else:
+		msg_parts.append("修改地形")
+	
+	if duration == -1:
+		msg_parts.append("（永久）")
+	elif duration > 0:
+		msg_parts.append("持续" + str(duration) + "回合")
+	
+	return {
+		"success": true,
+		"message": "，".join(msg_parts)
+	}
+
+func _effect_terrain_extend_duration(effect: Dictionary, source_sprite: Sprite, target: Variant, game_map: GameMap) -> Dictionary:
+	var hex_coord = _resolve_hex_coord(target)
+	if hex_coord == null:
+		return {"success": false, "error": "地形延长效果需要有效坐标"}
+	
+	var terrain_type_name: String = effect.get("terrain_type", "water")
+	var target_type = _terrain_type_from_string(terrain_type_name)
+	var extra_duration: int = effect.get("extra_duration", 0)
+	if extra_duration <= 0:
+		return {"success": false, "error": "延长回合数必须大于0"}
+	
+	var existing_terrain = game_map.get_terrain(hex_coord)
+	if existing_terrain and existing_terrain.terrain_type == target_type:
+		if existing_terrain.effect_duration > 0:
+			existing_terrain.effect_duration += extra_duration
+		return {
+			"success": true,
+			"message": "延长" + _terrain_type_to_text(target_type) + "地形" + str(extra_duration) + "回合"
+		}
+	
+	return {"success": false, "message": ""}
+
+func _effect_heal(effect: Dictionary, source_sprite: Sprite, target: Variant) -> Dictionary:
+	var heal_target: Sprite = null
+	var target_scope: String = effect.get("target", "self")
+	if target_scope == "self":
+		heal_target = source_sprite
+	elif target_scope == "target" and target is Sprite:
+		heal_target = target
+	
+	if heal_target == null:
+		return {"success": false, "error": "治疗效果缺少有效目标"}
+	
+	var amount: int = effect.get("amount", 0)
+	if amount > 0:
+		heal_target.heal(amount)
+	
+	return {
+		"success": true,
+		"message": heal_target.sprite_name + "恢复了" + str(amount) + "点生命"
+	}
+
+func _resolve_hex_coord(target: Variant) -> Variant:
+	if target is Vector2i:
+		return target
+	if target is Sprite:
+		return target.hex_position
+	return null
+
+func _terrain_type_from_string(type_name: String) -> TerrainTile.TerrainType:
+	var lowered = type_name.to_lower()
+	match lowered:
+		"water":
 			return TerrainTile.TerrainType.WATER
-		"C10":  # 水岩壁
+		"rock":
 			return TerrainTile.TerrainType.ROCK
+		"forest":
+			return TerrainTile.TerrainType.FOREST
 		_:
 			return TerrainTile.TerrainType.NORMAL
+
+func _terrain_type_to_text(terrain_type: TerrainTile.TerrainType) -> String:
+	match terrain_type:
+		TerrainTile.TerrainType.WATER:
+			return "水流"
+		TerrainTile.TerrainType.ROCK:
+			return "岩石"
+		TerrainTile.TerrainType.FOREST:
+			return "森林"
+		_:
+			return "普通"
+
+func _terrain_matches_string(terrain: TerrainTile, type_name: String) -> bool:
+	if terrain == null:
+		return false
+	return terrain.terrain_type == _terrain_type_from_string(type_name)
 
 # 获取卡牌可攻击的目标精灵列表
 func get_attackable_targets(card: Card, source_sprite: Sprite, all_sprites: Array[Sprite], game_map: GameMap) -> Array[Sprite]:
@@ -415,92 +493,3 @@ func _check_adjacent_in_effect(effect_description: String) -> bool:
 	
 	# 检查是否包含"相邻"关键词
 	return "相邻" in effect_description or "adjacent" in effect_description.to_lower()
-
-# 从卡牌效果描述中解析高度修改量（如"降低1级"、"抬高2级"等）
-func _parse_height_modification(effect_description: String, target_coord: Vector2i = Vector2i(-1, -1), game_map: GameMap = null) -> int:
-	if effect_description.is_empty():
-		return 0
-	
-	# 使用正则表达式匹配高度修改描述
-	var regex = RegEx.new()
-	
-	# 匹配"降低至X级"、"降低到X级"（根据当前高度计算delta）
-	regex.compile("(?:降低至|降低到|下降到|下降至)(\\d+)\\s*级")
-	var result = regex.search(effect_description)
-	if result:
-		var target_level_str = result.get_string(1)
-		var target_level = int(target_level_str)
-		if target_coord != Vector2i(-1, -1) and game_map:
-			var terrain = game_map.get_terrain(target_coord)
-			var current_level = terrain.height_level if terrain else 1
-			return target_level - current_level  # 返回需要的delta
-		else:
-			# 无法获取当前高度，返回假设降低（最坏情况）
-			return -(3 - target_level)
-	
-	# 匹配"抬高至X级"、"抬高到X级"、"提升至X级"（根据当前高度计算delta）
-	regex.compile("(?:抬高至|抬升至|抬高到|提升至|提升到)(\\d+)\\s*级")
-	result = regex.search(effect_description)
-	if result:
-		var target_level_str = result.get_string(1)
-		var target_level = int(target_level_str)
-		if target_coord != Vector2i(-1, -1) and game_map:
-			var terrain = game_map.get_terrain(target_coord)
-			var current_level = terrain.height_level if terrain else 1
-			return target_level - current_level  # 返回需要的delta
-		else:
-			# 无法获取当前高度，返回假设抬高（最坏情况）
-			return target_level - 1
-	
-	# 匹配"调整为X级"、"调整至X级"（根据当前高度计算delta）
-	regex.compile("(?:调整为|调整至|调整到)(\\d+)\\s*级")
-	result = regex.search(effect_description)
-	if result:
-		var target_level_str = result.get_string(1)
-		var target_level = int(target_level_str)
-		if target_coord != Vector2i(-1, -1) and game_map:
-			var terrain = game_map.get_terrain(target_coord)
-			var current_level = terrain.height_level if terrain else 1
-			return target_level - current_level  # 返回需要的delta
-		else:
-			# 无法获取当前高度，默认假设调整为1级
-			return target_level - 1
-	
-	# 匹配"降低X级"、"下降X级"等（负数）
-	regex.compile("(?:降低|下降|减少)(\\d+)\\s*级")
-	result = regex.search(effect_description)
-	if result:
-		var level_str = result.get_string(1)
-		var level_value = int(level_str)
-		return -level_value  # 返回负数表示降低
-	
-	# 匹配"抬高X级"、"提升X级"、"上升X级"等（正数）
-	regex.compile("(?:抬高|提升|上升|增加)(\\d+)\\s*级")
-	result = regex.search(effect_description)
-	if result:
-		var level_str = result.get_string(1)
-		var level_value = int(level_str)
-		return level_value  # 返回正数表示抬高
-	
-	# 未找到高度修改描述
-	return 0
-
-# 从效果描述中解析持续时间
-func _parse_duration(effect_description: String) -> int:
-	if effect_description.is_empty():
-		return 3  # 默认3回合
-	
-	# 匹配"永久"
-	if "永久" in effect_description:
-		return -1  # -1表示永久
-	
-	# 匹配"持续X回合"
-	var regex = RegEx.new()
-	regex.compile("持续(\\d+)\\s*回合")
-	var result = regex.search(effect_description)
-	if result:
-		var duration_str = result.get_string(1)
-		return int(duration_str)
-	
-	# 默认3回合
-	return 3

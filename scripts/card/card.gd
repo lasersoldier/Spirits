@@ -19,6 +19,9 @@ var card_type: String = ""  # attack, terrain, support
 # 效果描述
 var effect_description: String = ""
 
+# 结构化效果
+var effects: Array[Dictionary] = []
+
 # 目标类型
 var target_type: String = ""  # enemy_sprite, adjacent_tile, self
 
@@ -56,6 +59,13 @@ func _load_from_data(data: Dictionary):
 	target_type = data.get("target_type", "")
 	range_requirement = data.get("range_requirement", "")
 	dual_attribute_range = data.get("dual_attribute_range", 1)  # 默认1格
+	
+	# 解析结构化效果（深复制以避免共享引用）
+	effects.clear()
+	var raw_effects = data.get("effects", [])
+	for effect_entry in raw_effects:
+		if typeof(effect_entry) == TYPE_DICTIONARY:
+			effects.append(effect_entry.duplicate(true))
 
 # 检查是否是单属性卡牌
 func is_single_attribute() -> bool:
@@ -93,6 +103,9 @@ func duplicate_card() -> Card:
 	new_card.energy_cost = energy_cost
 	new_card.card_type = card_type
 	new_card.effect_description = effect_description
+	new_card.effects = []
+	for effect_entry in effects:
+		new_card.effects.append(effect_entry.duplicate(true))
 	new_card.target_type = target_type
 	new_card.range_requirement = range_requirement
 	new_card.dual_attribute_range = dual_attribute_range

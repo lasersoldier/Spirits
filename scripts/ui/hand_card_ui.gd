@@ -133,6 +133,7 @@ func _create_card_ui(card: Card) -> Control:
 	var desc_height = card_height - 28 - 20
 	desc_label.size = Vector2(card_width - 8, desc_height)
 	desc_label.custom_minimum_size = Vector2(card_width - 8, desc_height)
+	desc_label.mouse_filter = Control.MOUSE_FILTER_IGNORE  # 让点击继续传递给卡牌
 	desc_label.add_theme_font_size_override("normal_font_size", 10)
 	desc_label.add_theme_color_override("default_color", Color(0.88, 0.88, 0.88))
 	desc_label.scroll_active = false  # 禁用滚动
@@ -185,12 +186,17 @@ func _on_hand_updated(player_id: int, hand_size: int):
 
 # 刷新手牌显示
 func refresh_hand_cards():
+	print("HandCardUI: refresh_hand_cards 被调用")
 	if not game_manager:
+		print("HandCardUI: 游戏管理器不存在")
 		return
 	
 	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
 	if hand_manager:
+		print("HandCardUI: 更新手牌显示，手牌数量: ", hand_manager.hand_cards.size())
 		update_hand_cards(hand_manager.hand_cards)
+	else:
+		print("HandCardUI: 手牌管理器不存在")
 
 # 更新所有卡牌的拖动状态
 func _update_all_cards_drag_state():
