@@ -14,12 +14,18 @@ var terrain_tiles: Dictionary = {}
 
 # 玩家起始点
 var spawn_points: Array[Dictionary] = []
+var spawn_points_by_player: Dictionary = {}
 
 # 赏金区域坐标
 var bounty_zone_tiles: Array[Vector2i] = []
 
 # 公共争夺点坐标
 var contest_points: Array[Vector2i] = []
+
+# 地图区域配置
+var region_configs: Array = []
+var path_configs: Array = []
+var resource_points: Array = []
 
 # 地图边界（用于判断坐标是否有效）
 var map_bounds: Rect2i
@@ -59,19 +65,36 @@ func _load_map_config():
 	map_width = config.get("map_size", {}).get("width", 15)
 	map_height = config.get("map_size", {}).get("height", 15)
 	hex_size = config.get("hex_size", 1.0)
+	region_configs = config.get("regions", [])
+	path_configs = config.get("paths", [])
+	resource_points = config.get("resource_points", [])
 	
 	# 加载起始点
 	var spawn_points_raw = config.get("spawn_points", [])
 	spawn_points = []
+	spawn_points_by_player.clear()
 	for point in spawn_points_raw:
 		if point is Dictionary:
 			spawn_points.append(point)
+			var pid = int(point.get("player_id", -1))
+			if pid >= 0:
+				spawn_points_by_player[pid] = point
 	
 	# 加载赏金区域
 	var bounty_config = config.get("bounty_zone", {})
 	var bounty_tiles_config = bounty_config.get("tiles", [])
-	for tile_config in bounty_tiles_config:
-		bounty_zone_tiles.append(Vector2i(tile_config.q, tile_config.r))
+	bounty_zone_tiles.clear()
+	if bounty_tiles_config.size() > 0:
+		for tile_config in bounty_tiles_config:
+			bounty_zone_tiles.append(Vector2i(tile_config.q, tile_config.r))
+	else:
+		var center_dict = bounty_config.get("center", {})
+		var center = Vector2i(center_dict.get("q", 0), center_dict.get("r", 0))
+		var radius = bounty_config.get("radius", 0)
+		if radius > 0:
+			bounty_zone_tiles = HexGrid.get_hexes_in_range(center, radius)
+		elif center_dict.size() > 0:
+			bounty_zone_tiles.append(center)
 	
 	# 加载争夺点
 	var contest_configs = config.get("contest_points", [])
@@ -88,24 +111,23 @@ func _load_map_config():
 	_adjust_coordinate_offset()
 
 func _generate_initial_terrain():
-	# 生成六边形地图（2人对战）
-	# 计算地图中心
-	var center_q = map_width / 2.0
-	var center_r = map_height / 2.0
-	var max_distance = min(map_width, map_height) / 2.0
+	terrain_tiles.clear()
 	
-	# 生成六边形地图
-	for q in range(map_width):
-		for r in range(map_height):
-			var hex_coord = Vector2i(q, r)
-			
-			# 检查是否在六边形范围内
-			if _is_in_hexagon_shape(hex_coord, center_q, center_r, max_distance):
-				var terrain = TerrainTile.new(hex_coord, TerrainTile.TerrainType.NORMAL, 1)
-				_set_terrain(hex_coord, terrain)
+	if not region_configs.is_empty():
+		for region in region_configs:
+			_create_region(region)
+		
+		for path in path_configs:
+			_create_path(path)
+	else:
+		_generate_default_hexagon_map()
 	
-	# 在起始点周围设置一些初始地形（可选）
-	# 这里可以添加初始地形变化逻辑
+	for resource in resource_points:
+		if resource is Dictionary:
+			var coord = _dict_to_coord(resource.get("hex_coord", {}))
+			if coord:
+				var terrain = TerrainTile.new(coord, TerrainTile.TerrainType.NORMAL, 1)
+				_set_terrain(coord, terrain)
 
 # 调整坐标偏移，使实际地形从(0,0)开始
 func _adjust_coordinate_offset():
@@ -201,6 +223,8 @@ func _adjust_coordinate_offset():
 			max_q = max(max_q, coord.x)
 			max_r = max(max_r, coord.y)
 		map_bounds = Rect2i(0, 0, int(max_q) + 1, int(max_r) + 1)
+	
+	_rebuild_spawn_point_lookup()
 	
 	print("坐标偏移调整完成，地形现在从(0,0)开始")
 
@@ -349,45 +373,27 @@ func is_contest_point(hex_coord: Vector2i) -> int:
 
 # 获取玩家起始点
 func get_spawn_point(player_id: int) -> Dictionary:
-	if player_id >= 0 and player_id < spawn_points.size():
-		return spawn_points[player_id]
+	if spawn_points_by_player.has(player_id):
+		return spawn_points_by_player[player_id]
 	return {}
 
 # 获取玩家的部署位置（只返回有实际地形板块的坐标，坐标白名单）
 func get_deploy_positions(player_id: int) -> Array[Vector2i]:
 	var positions: Array[Vector2i] = []
-	var candidate_positions: Array[Vector2i] = []
+	var spawn = get_spawn_point(player_id)
 	
-	# 玩家0可以从(0,10)到(5,10)部署精灵
-	if player_id == 0:
-		for q in range(0, 6):  # 0到5
-			candidate_positions.append(Vector2i(q, 10))
+	if not spawn.is_empty():
+		var deploy_configs = spawn.get("deploy_positions", [])
+		for deploy in deploy_configs:
+			if deploy is Dictionary:
+				positions.append(Vector2i(deploy.get("q", 0), deploy.get("r", 0)))
+		
+		if positions.is_empty():
+			var hex_coord = spawn.get("hex_coord", {})
+			if hex_coord is Dictionary:
+				positions.append(Vector2i(hex_coord.get("q", 0), hex_coord.get("r", 0)))
 	
-	# 玩家1（AI）部署在r=0这一行，从(5,0)到(10,0)
-	elif player_id == 1:
-		for q in range(5, 11):  # 5到10
-			candidate_positions.append(Vector2i(q, 0))
-	
-	# 其他玩家使用配置中的部署位置
-	else:
-		var spawn = get_spawn_point(player_id)
-		if not spawn.is_empty():
-			var deploy_configs = spawn.get("deploy_positions", [])
-			for deploy_config in deploy_configs:
-				candidate_positions.append(Vector2i(deploy_config.q, deploy_config.r))
-	
-	# 从候选位置中筛选出有实际地形板块的位置（坐标白名单）
-	for pos in candidate_positions:
-		if has_terrain_tile(pos):
-			positions.append(pos)
-	
-	# 如果筛选后位置不足3个，也包含没有地形的位置（允许在部署区域部署，类似玩家0和AI的固定部署位置）
-	if positions.size() < 3:
-		for pos in candidate_positions:
-			if pos not in positions:
-				positions.append(pos)
-	
-	print("玩家", player_id, "部署位置（共", positions.size(), "个，有地形:", positions.size(), "个）: ", positions)
+	print("玩家", player_id, "部署位置（共", positions.size(), "个）: ", positions)
 	return positions
 
 # 坐标转字符串key
@@ -402,3 +408,65 @@ func get_all_terrain_coords() -> Array[Vector2i]:
 		if parts.size() == 2:
 			coords.append(Vector2i(int(parts[0]), int(parts[1])))
 	return coords
+
+func _create_region(region: Dictionary) -> void:
+	var center = _dict_to_coord(region.get("center", {}))
+	if center == null:
+		return
+	var radius = region.get("radius", 3)
+	var terrain_type = _terrain_type_from_string(region.get("terrain_type", "normal"))
+	var height = region.get("height", 1)
+	_paint_hex_area(center, radius, terrain_type, height)
+
+func _create_path(path_config: Dictionary) -> void:
+	var from_coord = _dict_to_coord(path_config.get("from", {}))
+	var to_coord = _dict_to_coord(path_config.get("to", {}))
+	if from_coord == null or to_coord == null:
+		return
+	var width = max(0, path_config.get("width", 1))
+	var terrain_type = _terrain_type_from_string(path_config.get("terrain_type", "normal"))
+	var height = path_config.get("height", 1)
+	var line = HexGrid.get_line(from_coord, to_coord)
+	for coord in line:
+		_paint_hex_area(coord, width, terrain_type, height)
+
+func _paint_hex_area(center: Vector2i, radius: int, terrain_type: TerrainTile.TerrainType, height: int) -> void:
+	var tiles = HexGrid.get_hexes_in_range(center, radius)
+	for coord in tiles:
+		var terrain = TerrainTile.new(coord, terrain_type, height)
+		_set_terrain(coord, terrain)
+
+func _terrain_type_from_string(type_name: String) -> TerrainTile.TerrainType:
+	match type_name.to_lower():
+		"forest":
+			return TerrainTile.TerrainType.FOREST
+		"water":
+			return TerrainTile.TerrainType.WATER
+		"rock":
+			return TerrainTile.TerrainType.ROCK
+		_:
+			return TerrainTile.TerrainType.NORMAL
+
+func _dict_to_coord(data: Dictionary) -> Variant:
+	if data.is_empty():
+		return null
+	return Vector2i(data.get("q", 0), data.get("r", 0))
+
+func _generate_default_hexagon_map() -> void:
+	var center_q = map_width / 2.0
+	var center_r = map_height / 2.0
+	var max_distance = min(map_width, map_height) / 2.0
+	for q in range(map_width):
+		for r in range(map_height):
+			var hex_coord = Vector2i(q, r)
+			if _is_in_hexagon_shape(hex_coord, center_q, center_r, max_distance):
+				var terrain = TerrainTile.new(hex_coord, TerrainTile.TerrainType.NORMAL, 1)
+				_set_terrain(hex_coord, terrain)
+
+func _rebuild_spawn_point_lookup() -> void:
+	spawn_points_by_player.clear()
+	for spawn in spawn_points:
+		if spawn is Dictionary:
+			var pid = int(spawn.get("player_id", -1))
+			if pid >= 0:
+				spawn_points_by_player[pid] = spawn

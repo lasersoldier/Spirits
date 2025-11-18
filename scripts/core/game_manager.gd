@@ -15,7 +15,7 @@ var current_phase: GamePhase = GamePhase.DEPLOYMENT
 var current_round: int = 0
 
 # 玩家数量
-const PLAYER_COUNT: int = 2  # 1人类 + 1AI
+const PLAYER_COUNT: int = 4  # 1人类 + 3AI
 
 # 人类玩家ID（固定为0）
 const HUMAN_PLAYER_ID: int = 0
@@ -155,16 +155,14 @@ func start_game():
 
 # 构建所有玩家的卡组
 func _build_all_decks():
-	# 人类玩家：需要手动构建（这里先使用默认构建）
-	# 实际应该通过UI让玩家选择
-	var human_deck = _build_default_human_deck()
-	player_decks[HUMAN_PLAYER_ID] = human_deck
+	player_decks.clear()
 	
-	# AI玩家：按难度自动生成（只有1个AI）
-	var ai_id = 1
-	var difficulty = "normal"  # 可以配置
-	var deck = deck_builder.build_ai_deck(difficulty, ai_id)
-	player_decks[ai_id] = deck
+	for player_id in range(PLAYER_COUNT):
+		if player_id == HUMAN_PLAYER_ID:
+			player_decks[player_id] = _build_default_human_deck()
+		else:
+			var difficulty = _get_ai_difficulty(player_id)
+			player_decks[player_id] = deck_builder.build_ai_deck(difficulty, player_id)
 
 # 构建默认人类卡组（简化版）
 func _build_default_human_deck() -> Array[Card]:
@@ -179,6 +177,26 @@ func _build_default_human_deck() -> Array[Card]:
 	
 	deck.shuffle()
 	return deck
+
+func _get_ai_difficulty(player_id: int) -> String:
+	match player_id:
+		1:
+			return "normal"
+		2:
+			return "easy"
+		3:
+			return "hard"
+		_:
+			return "normal"
+
+func _get_ai_player_difficulty(player_id: int) -> AIPlayer.Difficulty:
+	match player_id:
+		2:
+			return AIPlayer.Difficulty.EASY
+		3:
+			return AIPlayer.Difficulty.HARD
+		_:
+			return AIPlayer.Difficulty.NORMAL
 
 # 分发起手卡牌
 func _deal_starting_hands():
@@ -219,7 +237,7 @@ func deploy_ai_players():
 		_connect_sprite_signals(sprites)
 		
 		# 创建AI玩家
-		var difficulty = AIPlayer.Difficulty.NORMAL
+		var difficulty = _get_ai_player_difficulty(ai_id)
 		var ai_player = AIPlayer.new(ai_id, difficulty, game_map, sprites, hand_managers[ai_id], energy_manager, contest_point_manager)
 		ai_players[ai_id] = ai_player
 	# AI部署后更新视野

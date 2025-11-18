@@ -41,17 +41,16 @@ func check_victory_condition(_sprites: Array[Sprite]) -> bool:
 	# 检查是否在任意起始点（撤离点）
 	var holder_pos = bounty_holder.hex_position
 	
-	# 检查是否在2个起始点中的任意一个（2人对战）
-	for player_id in range(2):
-		var spawn_point = game_map.get_spawn_point(player_id)
-		if spawn_point.is_empty():
+	# 检查是否在任意玩家的起始点
+	for spawn in game_map.spawn_points:
+		if not spawn is Dictionary:
 			continue
-		
-		var spawn_coord = Vector2i(spawn_point.hex_coord.q, spawn_point.hex_coord.r)
-		if holder_pos == spawn_coord:
-			# 胜利！
-			declare_victory(bounty_holder.owner_player_id)
-			return true
+		var hex_coord = spawn.get("hex_coord", {})
+		if hex_coord is Dictionary:
+			var spawn_coord = Vector2i(hex_coord.get("q", 0), hex_coord.get("r", 0))
+			if holder_pos == spawn_coord:
+				declare_victory(bounty_holder.owner_player_id)
+				return true
 	
 	return false
 

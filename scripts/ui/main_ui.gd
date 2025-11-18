@@ -85,6 +85,7 @@ var current_overlapping_hex: Vector2i = Vector2i(-1, -1)
 var current_overlapping_sprites: Array[Sprite] = []
 var pending_card: Card = null  # 等待选择精灵的卡牌
 var pending_card_is_right_drag: bool = false  # 是否是右键拖拽
+var player_energy_display: Dictionary = {}
 
 func _ready():
 	# 初始化UI节点
@@ -177,6 +178,10 @@ func set_game_manager(gm: GameManager):
 			print("MainUI: 战争迷雾系统已连接到精灵渲染器")
 	
 	_connect_signals()
+	
+	if game_manager and game_manager.energy_manager:
+		game_manager.energy_manager.energy_changed.connect(_on_energy_changed)
+		_initialize_energy_display()
 
 func _connect_signals():
 	if not game_manager:
@@ -187,15 +192,36 @@ func _connect_signals():
 	game_manager.all_actions_submitted.connect(_on_all_actions_submitted)
 	game_manager.action_added.connect(_on_action_added)
 
+func _initialize_energy_display():
+	player_energy_display.clear()
+	if not game_manager or not game_manager.energy_manager:
+		return
+	for pid in range(GameManager.PLAYER_COUNT):
+		player_energy_display[pid] = game_manager.energy_manager.get_energy(pid)
+	update_energy(GameManager.HUMAN_PLAYER_ID, game_manager.energy_manager.get_energy(GameManager.HUMAN_PLAYER_ID))
+
+func _on_energy_changed(player_id: int, _old_energy: int, new_energy: int):
+	update_energy(player_id, new_energy)
+
 # 更新精灵状态面板
 func update_sprite_status(_sprites: Array[Sprite]):
 	# 更新显示所有精灵的血量、存活状态等
 	pass
 
 # 更新能量显示
-func update_energy(_player_id: int, energy: int):
+func update_energy(player_id: int, energy: int):
+	player_energy_display[player_id] = energy
+	
 	if energy_label:
-		energy_label.text = "能量: " + str(energy) + "/5"
+		var lines: Array[String] = []
+		var player_ids: Array = player_energy_display.keys()
+		player_ids.sort()
+		for pid in player_ids:
+			var prefix = "玩家" + str(pid)
+			if pid == GameManager.HUMAN_PLAYER_ID:
+				prefix += "(你)"
+			lines.append(prefix + ": " + str(player_energy_display[pid]) + "/5")
+		energy_label.text = "能量:\n" + "\n".join(lines)
 
 # 更新赏金状态
 func update_bounty_status(has_bounty: bool, holder_pos: Vector2i):

@@ -8,6 +8,7 @@ var terrain_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance
 var highlight_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（可部署位置高亮，绿色）
 var selected_highlight_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（已选择位置高亮，红色）
 var preview_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（精灵预览）
+var contest_point_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（争夺点地标）
 
 # 战争迷雾系统
 var fog_of_war_manager: FogOfWarManager = null
@@ -45,6 +46,8 @@ func _render_all_terrain():
 		var terrain = game_map.get_terrain(coord)
 		if terrain:
 			_render_terrain_tile(coord, terrain)
+
+	_render_contest_point_markers()
 	
 	print("TerrainRenderer: 完成渲染，共 ", terrain_nodes.size(), " 个地形节点")
 	
@@ -87,6 +90,82 @@ func _render_terrain_tile(hex_coord: Vector2i, terrain: TerrainTile):
 	
 	add_child(mesh_instance)
 	terrain_nodes[key] = mesh_instance
+
+func _render_contest_point_markers():
+	if not game_map:
+		return
+	
+	_clear_contest_point_markers()
+	
+	for coord in game_map.contest_points:
+		if coord is Vector2i:
+			_create_contest_point_marker(coord)
+
+func _clear_contest_point_markers():
+	for key in contest_point_nodes.keys():
+		var node = contest_point_nodes[key]
+		if is_instance_valid(node):
+			node.queue_free()
+	contest_point_nodes.clear()
+
+func _create_contest_point_marker(coord: Vector2i):
+	var key = _coord_to_key(coord)
+	
+	# 如果已存在，先移除
+	if contest_point_nodes.has(key):
+		var existing = contest_point_nodes[key]
+		if is_instance_valid(existing):
+			existing.queue_free()
+		contest_point_nodes.erase(key)
+	
+	var mesh_instance = MeshInstance3D.new()
+	mesh_instance.mesh = ModelGenerator.create_contest_point_mesh()
+	
+	var material = StandardMaterial3D.new()
+	material.albedo_color = Color(1.0, 0.85, 0.1, 0.95)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.emission_enabled = true
+	material.emission = Color(1.0, 0.6, 0.1, 0.8)
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_instance.material_override = material
+	
+	var hex_size = game_map.hex_size if game_map else 1.5
+	var map_height = game_map.map_height if game_map else 20
+	var map_width = game_map.map_width if game_map else 20
+	var world_pos = HexGrid.hex_to_world(coord, hex_size, map_height, map_width)
+	
+	var terrain = game_map.get_terrain(coord) if game_map else null
+	var terrain_height = 3.0
+	if terrain:
+		terrain_height = _get_height_for_level(terrain.height_level)
+	world_pos.y = terrain_height
+	
+	mesh_instance.position = world_pos
+	add_child(mesh_instance)
+	contest_point_nodes[key] = mesh_instance
+
+func _update_contest_marker_position(hex_coord: Vector2i):
+	var key = _coord_to_key(hex_coord)
+	if not contest_point_nodes.has(key):
+		return
+	
+	var marker = contest_point_nodes[key]
+	if not is_instance_valid(marker):
+		contest_point_nodes.erase(key)
+		return
+	
+	var hex_size = game_map.hex_size if game_map else 1.5
+	var map_height = game_map.map_height if game_map else 20
+	var map_width = game_map.map_width if game_map else 20
+	var world_pos = HexGrid.hex_to_world(hex_coord, hex_size, map_height, map_width)
+	
+	var terrain = game_map.get_terrain(hex_coord) if game_map else null
+	var terrain_height = 3.0
+	if terrain:
+		terrain_height = _get_height_for_level(terrain.height_level)
+	world_pos.y = terrain_height
+	
+	marker.position = world_pos
 
 func _get_height_for_level(level: int) -> float:
 	match level:
@@ -135,6 +214,7 @@ func _on_terrain_changed(hex_coord: Vector2i, terrain: TerrainTile):
 	_render_terrain_tile(hex_coord, terrain)
 	# 地形变化后更新高亮节点位置（因为高度可能改变）
 	_update_highlight_positions(hex_coord)
+	_update_contest_marker_position(hex_coord)
 	# 地形变化后更新迷雾覆盖层（因为高度可能改变）
 	call_deferred("_update_fog_overlay")
 

@@ -1,47 +1,116 @@
 {
   "map_size": {
-    "width": 20,
-    "height": 20
+    "width": 48,
+    "height": 48
   },
-  "hex_size": 1.5,
+  "hex_size": 1.2,
+  "regions": [
+    {
+      "name": "player_0",
+      "type": "player",
+      "player_id": 0,
+      "center": {"q": 24, "r": 38},
+      "radius": 4,
+      "terrain_type": "normal",
+      "height": 1
+    },
+    {
+      "name": "player_1",
+      "type": "player",
+      "player_id": 1,
+      "center": {"q": 38, "r": 24},
+      "radius": 4,
+      "terrain_type": "normal",
+      "height": 1
+    },
+    {
+      "name": "player_2",
+      "type": "player",
+      "player_id": 2,
+      "center": {"q": 24, "r": 10},
+      "radius": 4,
+      "terrain_type": "normal",
+      "height": 1
+    },
+    {
+      "name": "player_3",
+      "type": "player",
+      "player_id": 3,
+      "center": {"q": 10, "r": 24},
+      "radius": 4,
+      "terrain_type": "normal",
+      "height": 1
+    },
+    {
+      "name": "core",
+      "type": "core",
+      "center": {"q": 24, "r": 24},
+      "radius": 3,
+      "terrain_type": "rock",
+      "height": 2
+    }
+  ],
+  "paths": [
+    {"from": {"q": 24, "r": 38}, "to": {"q": 24, "r": 24}, "width": 2},
+    {"from": {"q": 38, "r": 24}, "to": {"q": 24, "r": 24}, "width": 2},
+    {"from": {"q": 24, "r": 10}, "to": {"q": 24, "r": 24}, "width": 2},
+    {"from": {"q": 10, "r": 24}, "to": {"q": 24, "r": 24}, "width": 2},
+    {"from": {"q": 24, "r": 38}, "to": {"q": 38, "r": 24}, "width": 2},
+
+    {"from": {"q": 24, "r": 10}, "to": {"q": 10, "r": 24}, "width": 2}
+  ],
+  "resource_points": [
+    {"type": "build", "hex_coord": {"q": 24, "r": 34}},
+    {"type": "build", "hex_coord": {"q": 34, "r": 24}},
+    {"type": "build", "hex_coord": {"q": 24, "r": 14}},
+    {"type": "build", "hex_coord": {"q": 14, "r": 24}}
+  ],
   "spawn_points": [
     {
       "player_id": 0,
-      "hex_coord": {"q": 5, "r": 5},
+      "hex_coord": {"q": 24, "r": 37},
       "deploy_positions": [
-        {"q": 4, "r": 5},
-        {"q": 5, "r": 4},
-        {"q": 6, "r": 4}
+        {"q": 23, "r": 37},
+        {"q": 24, "r": 36},
+        {"q": 25, "r": 37}
       ]
     },
     {
       "player_id": 1,
-      "hex_coord": {"q": 15, "r": 15},
+      "hex_coord": {"q": 37, "r": 24},
       "deploy_positions": [
-        {"q": 14, "r": 15},
-        {"q": 15, "r": 14},
-        {"q": 16, "r": 14}
+        {"q": 36, "r": 24},
+        {"q": 37, "r": 23},
+        {"q": 37, "r": 25}
+      ]
+    },
+    {
+      "player_id": 2,
+      "hex_coord": {"q": 24, "r": 11},
+      "deploy_positions": [
+        {"q": 23, "r": 11},
+        {"q": 24, "r": 12},
+        {"q": 25, "r": 11}
+      ]
+    },
+    {
+      "player_id": 3,
+      "hex_coord": {"q": 11, "r": 24},
+      "deploy_positions": [
+        {"q": 11, "r": 23},
+        {"q": 12, "r": 24},
+        {"q": 11, "r": 25}
       ]
     }
   ],
   "bounty_zone": {
-    "center": {"q": 10, "r": 10},
-    "radius": 1,
-    "tiles": [
-      {"q": 9, "r": 10},
-      {"q": 10, "r": 9},
-      {"q": 10, "r": 10},
-      {"q": 10, "r": 11},
-      {"q": 11, "r": 9},
-      {"q": 11, "r": 10},
-      {"q": 11, "r": 11}
-    ]
+    "center": {"q": 24, "r": 24},
+    "radius": 2
   },
   "contest_points": [
-    {
-      "id": 0,
-      "hex_coord": {"q": 10, "r": 10},
-      "description": "玩家1-玩家2之间的争夺点"
-    }
+    {"id": 0, "hex_coord": {"q": 24, "r": 28}, "description": "北向争夺点"},
+    {"id": 1, "hex_coord": {"q": 28, "r": 24}, "description": "东向争夺点"},
+    {"id": 2, "hex_coord": {"q": 24, "r": 20}, "description": "南向争夺点"},
+    {"id": 3, "hex_coord": {"q": 20, "r": 24}, "description": "西向争夺点"}
   ]
 }

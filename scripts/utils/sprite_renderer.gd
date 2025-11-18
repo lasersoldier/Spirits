@@ -345,20 +345,33 @@ func _coord_to_key(coord: Vector2i) -> String:
 
 # 计算精灵在六边形内的偏移位置
 func _calculate_sprite_offset(hex_coord: Vector2i, index: int, total: int) -> Vector3:
-	if total <= 1:
-		return Vector3.ZERO  # 只有一个精灵，不需要偏移
+	var has_contest_marker = false
+	if game_map:
+		has_contest_marker = game_map.is_contest_point(hex_coord) >= 0
+	
+	var effective_total = total
+	if has_contest_marker:
+		effective_total += 1  # 将争夺点地标视为占位，留出额外空间
+	
+	if effective_total <= 1:
+		return Vector3.ZERO
+	
+	# 如果没有地标且只有一个精灵，就不需要偏移
+	if not has_contest_marker and total <= 1:
+		return Vector3.ZERO
 	
 	var hex_size = game_map.hex_size if game_map else 1.5
-	var radius = hex_size * 0.4  # 偏移半径（六边形大小的40%）
+	var radius = hex_size * (0.55 if has_contest_marker else 0.4)
 	
-	# 使用圆形排列
-	var angle_step = TAU / total  # 每个精灵的角度间隔
-	var angle = index * angle_step  # 当前精灵的角度
+	var angle_step = TAU / effective_total
+	var angle_index = float(index)
+	if has_contest_marker:
+		# 将地标视为第0个占位，精灵从第1个角度开始排布
+		angle_index += 1.0
+	var angle = angle_index * angle_step
 	
-	# 计算X和Z偏移（在六边形平面上）
 	var offset_x = radius * cos(angle)
 	var offset_z = radius * sin(angle)
-	
 	return Vector3(offset_x, 0, offset_z)
 
 # 更新所有精灵的位置（公共方法，可在回合结束后调用）
