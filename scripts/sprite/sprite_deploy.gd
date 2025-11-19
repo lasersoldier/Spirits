@@ -16,19 +16,19 @@ func _init(library: SpriteLibrary, map: GameMap):
 	sprite_library = library
 	game_map = map
 
-# 人类玩家部署：从4只基础精灵中选择3只
+# 人类玩家部署：从基础精灵中选择自定义数量
 func deploy_human_player(player_id: int, selected_sprite_ids: Array[String], deploy_positions: Array[Vector2i]) -> Array[Sprite]:
-	if selected_sprite_ids.size() != 3:
-		push_error("人类玩家必须选择3只精灵")
+	if selected_sprite_ids.is_empty():
+		push_error("必须至少选择1只精灵")
 		return []
 	
-	if deploy_positions.size() != 3:
-		push_error("必须提供3个部署位置")
+	if selected_sprite_ids.size() != deploy_positions.size():
+		push_error("部署精灵数量与位置数量不匹配")
 		return []
 	
 	var sprites: Array[Sprite] = []
 	
-	for i in range(3):
+	for i in range(selected_sprite_ids.size()):
 		var sprite_id = selected_sprite_ids[i]
 		var position = deploy_positions[i]
 		
@@ -57,6 +57,27 @@ func deploy_human_player(player_id: int, selected_sprite_ids: Array[String], dep
 		sprite_deployed.emit(sprite, player_id, position)
 	
 	return sprites
+
+func deploy_custom_sprite(player_id: int, sprite_id: String, position: Vector2i) -> Sprite:
+	if sprite_id.is_empty():
+		push_error("自定义部署失败：缺少精灵ID")
+		return null
+	
+	var sprite_data = sprite_library.get_sprite_data(sprite_id)
+	if sprite_data.is_empty():
+		push_error("自定义部署失败：精灵数据不存在 " + sprite_id)
+		return null
+	
+	var sprite = Sprite.new(sprite_data)
+	sprite.owner_player_id = player_id
+	sprite.hex_position = position
+	
+	if not deployed_sprites.has(player_id):
+		deployed_sprites[player_id] = []
+	deployed_sprites[player_id].append(sprite)
+	sprite_deployed.emit(sprite, player_id, position)
+	
+	return sprite
 
 # AI玩家部署：随机分配3只不同属性的精灵
 func deploy_ai_player(player_id: int) -> Array[Sprite]:
@@ -110,6 +131,13 @@ func deploy_ai_player(player_id: int) -> Array[Sprite]:
 		sprite_deployed.emit(sprite, player_id, position)
 	
 	return sprites
+
+func remove_sprite(sprite: Sprite):
+	if not sprite:
+		return
+	var pid = sprite.owner_player_id
+	if deployed_sprites.has(pid):
+		deployed_sprites[pid].erase(sprite)
 
 # 验证部署位置是否有效
 func _is_valid_deploy_position(player_id: int, position: Vector2i) -> bool:

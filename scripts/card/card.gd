@@ -28,6 +28,12 @@ var target_type: String = ""  # enemy_sprite, adjacent_tile, self
 # 范围要求
 var range_requirement: String = ""
 
+# 自定义范围覆盖（>0 时使用固定范围）
+var range_override: int = -1
+
+# 结算时机（immediate, start_of_next_turn 等）
+var timing: String = "immediate"
+
 # 双属性卡牌：需要另一个属性精灵的距离要求（默认1格，即相邻）
 var dual_attribute_range: int = 1
 
@@ -58,6 +64,8 @@ func _load_from_data(data: Dictionary):
 	effect_description = data.get("effect", "")
 	target_type = data.get("target_type", "")
 	range_requirement = data.get("range_requirement", "")
+	range_override = data.get("range_override", -1)
+	timing = data.get("timing", data.get("resolve_timing", "start_of_next_turn"))
 	dual_attribute_range = data.get("dual_attribute_range", 1)  # 默认1格
 	
 	# 解析结构化效果（深复制以避免共享引用）
@@ -110,6 +118,8 @@ func duplicate_card() -> Card:
 			new_card.effects.append(effect_entry.duplicate(true))
 	new_card.target_type = target_type
 	new_card.range_requirement = range_requirement
+	new_card.range_override = range_override
+	new_card.timing = timing
 	new_card.dual_attribute_range = dual_attribute_range
 	new_card.owner_player_id = owner_player_id
 	new_card.is_usable = is_usable

@@ -1,0 +1,86 @@
+{
+  "map_size": {
+    "width": 32,
+    "height": 32
+  },
+  "hex_size": 1.1,
+  "regions": [
+    {
+      "name": "play_area",
+      "center": {"q": 16, "r": 16},
+      "radius": 11,
+      "terrain_type": "normal",
+      "height": 1
+    },
+    {
+      "name": "bedrock_core",
+      "center": {"q": 16, "r": 16},
+      "radius": 2,
+      "terrain_type": "bedrock",
+      "height": 2
+    },
+    {
+      "name": "forest_grove",
+      "center": {"q": 22, "r": 12},
+      "radius": 2,
+      "terrain_type": "forest",
+      "height": 1
+    },
+    {
+      "name": "water_basin",
+      "center": {"q": 10, "r": 20},
+      "radius": 2,
+      "terrain_type": "water",
+      "height": 1,
+      "is_water_source": true
+    },
+    {
+      "name": "scorched_field",
+      "center": {"q": 12, "r": 10},
+      "radius": 2,
+      "terrain_type": "scorched",
+      "height": 1
+    }
+  ],
+  "paths": [
+    {
+      "from": {"q": 16, "r": 26},
+      "to": {"q": 16, "r": 16},
+      "width": 2,
+      "terrain_type": "normal",
+      "height": 1
+    },
+    {
+      "from": {"q": 16, "r": 6},
+      "to": {"q": 16, "r": 16},
+      "width": 2,
+      "terrain_type": "normal",
+      "height": 1
+    }
+  ],
+  "resource_points": [],
+  "spawn_points": [
+    {
+      "player_id": 0,
+      "hex_coord": {"q": 16, "r": 27},
+      "deploy_positions": [
+        {"q": 14, "r": 26},
+        {"q": 15, "r": 27},
+        {"q": 17, "r": 27},
+        {"q": 18, "r": 26}
+      ]
+    }
+  ],
+  "bounty_zone": {
+    "center": {"q": 16, "r": 16},
+    "radius": 1
+  },
+  "contest_points": [],
+  "training_enemies": [
+    {"sprite_id": "F01", "player_id": 1, "hex_coord": {"q": 12, "r": 14}},
+    {"sprite_id": "W01", "player_id": 1, "hex_coord": {"q": 20, "r": 18}},
+    {"sprite_id": "S01", "player_id": 1, "hex_coord": {"q": 14, "r": 20}},
+    {"sprite_id": "R01", "player_id": 1, "hex_coord": {"q": 18, "r": 12}}
+  ]
+}
+

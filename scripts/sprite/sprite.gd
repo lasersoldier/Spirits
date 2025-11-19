@@ -39,7 +39,12 @@ func _init(data: Dictionary = {}):
 
 # 初始化回合（每回合开始时调用）
 func start_turn():
-	remaining_movement = base_movement
+	var status_mgr = StatusEffectManager.get_instance()
+	if status_mgr:
+		var bonus = status_mgr.get_movement_bonus(self)
+		remaining_movement = max(0, base_movement + bonus)
+	else:
+		remaining_movement = base_movement
 
 # 移动到新位置
 func move_to(new_position: Vector2i):
@@ -53,7 +58,14 @@ func consume_movement(cost: int):
 
 # 受到伤害
 func take_damage(damage: int):
-	current_hp = max(0, current_hp - damage)
+	var final_damage = max(0, damage)
+	var status_mgr = StatusEffectManager.get_instance()
+	if status_mgr:
+		final_damage = status_mgr.modify_incoming_damage(self, final_damage)
+	final_damage = max(0, final_damage)
+	if final_damage == 0:
+		return
+	current_hp = max(0, current_hp - final_damage)
 	if current_hp <= 0:
 		die()
 
@@ -67,6 +79,9 @@ func die():
 		return
 	
 	is_alive = false
+	var status_mgr = StatusEffectManager.get_instance()
+	if status_mgr:
+		status_mgr.clear_statuses(self)
 	if has_bounty:
 		lose_bounty()
 	sprite_died.emit(self)

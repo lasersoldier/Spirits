@@ -108,6 +108,37 @@ static func get_hexes_in_range(center: Vector2i, max_range: int) -> Array[Vector
 				results.append(hex)
 	return results
 
+static func get_hexes_in_ring(center: Vector2i, radius: int) -> Array[Vector2i]:
+	if radius <= 0:
+		return []
+	var results: Array[Vector2i] = []
+	var range_hexes = get_hexes_in_range(center, radius)
+	for hex in range_hexes:
+		if hex_distance(center, hex) == radius:
+			results.append(hex)
+	return results
+
+static func get_hexes_in_range_with_bounds(center: Vector2i, min_range: int, max_range: int) -> Array[Vector2i]:
+	if max_range < 0 or max_range < min_range:
+		return []
+	var clamped_min = max(0, min_range)
+	var clamped_max = max(clamped_min, max_range)
+	var results: Array[Vector2i] = []
+	var range_hexes = get_hexes_in_range(center, clamped_max)
+	for hex in range_hexes:
+		var distance = hex_distance(center, hex)
+		if distance >= clamped_min and distance <= clamped_max:
+			results.append(hex)
+	return results
+
+static func sum_distance_to_points(origin: Vector2i, points: Array[Vector2i]) -> int:
+	if points.is_empty():
+		return 0
+	var total := 0
+	for point in points:
+		total += hex_distance(origin, point)
+	return total
+
 # 获取两点之间的直线路径（六边形网格中的直线）
 static func get_line(hex_a: Vector2i, hex_b: Vector2i) -> Array[Vector2i]:
 	var results: Array[Vector2i] = []

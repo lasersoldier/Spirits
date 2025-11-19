@@ -21,22 +21,24 @@ func _ready():
 	_create_ui()
 
 func _create_ui():
-	# 获取屏幕尺寸
+	# 获取屏幕尺寸（使用缩放后的尺寸，而非原始尺寸）
 	var screen_size = get_viewport().get_visible_rect().size
+	mouse_filter = Control.MOUSE_FILTER_IGNORE  # 改为IGNORE，让子控件接收事件
 	
-	# 创建主面板（使用全局缩放）
+	# 创建主面板（直接使用缩放后的值，避免二次缩放）
 	var panel_width = screen_size.x * 0.7
 	var panel_height = screen_size.y * 0.8
 	main_panel = Panel.new()
-	main_panel.size = UIScaleManager.scale_vec2(Vector2(panel_width, panel_height))
-	# 居中显示
-	main_panel.position = UIScaleManager.scale_vec2(Vector2((screen_size.x - panel_width) / 2, (screen_size.y - panel_height) / 2))
-	UIScaleManager.apply_scale_to_panel(main_panel)
+	main_panel.size = Vector2(panel_width, panel_height)  # 不再调用scale_vec2
+	main_panel.position = Vector2((screen_size.x - panel_width) / 2, (screen_size.y - panel_height) / 2)
+	# 关键：允许鼠标事件穿透到子控件
+	main_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(main_panel)
 	
 	# 创建垂直布局
 	var vbox = VBoxContainer.new()
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE  # 确保容器不拦截鼠标事件
 	main_panel.add_child(vbox)
 	
 	# 标题（使用全局缩放）
@@ -56,6 +58,7 @@ func _create_ui():
 	# 玩家信息显示区域
 	players_container = VBoxContainer.new()
 	players_container.add_theme_constant_override("separation", 20)
+	players_container.mouse_filter = Control.MOUSE_FILTER_IGNORE  # 确保容器不拦截鼠标事件
 	vbox.add_child(players_container)
 	
 	# 填充空间
@@ -93,6 +96,7 @@ func _load_deployment_info():
 		# 创建玩家行
 		var player_row = HBoxContainer.new()
 		player_row.add_theme_constant_override("separation", 15)
+		player_row.mouse_filter = Control.MOUSE_FILTER_IGNORE  # 确保容器不拦截鼠标事件
 		players_container.add_child(player_row)
 		
 		# 玩家标签
@@ -115,45 +119,65 @@ func _load_deployment_info():
 			var sprite_card = _create_sprite_card(sprite)
 			player_row.add_child(sprite_card)
 
-func _create_sprite_card(sprite: Sprite) -> Panel:
-	# 创建精灵卡片
-	var sprite_card = Panel.new()
-	sprite_card.custom_minimum_size = UIScaleManager.scale_vec2(Vector2(200, 120))
-	UIScaleManager.apply_scale_to_panel(sprite_card)
-	sprite_card.mouse_filter = Control.MOUSE_FILTER_STOP  # 允许接收鼠标事件
+func _create_sprite_card(sprite: Sprite) -> Button:
+	var sprite_card = Button.new()
+	# 直接使用缩放后的值，避免坐标错位
+	var card_size = Vector2(200, 120)  # 原始尺寸
+	sprite_card.custom_minimum_size = card_size  # 不再调用scale_vec2
+	sprite_card.size = card_size  # 强制设置尺寸
 	
-	# 添加鼠标进入/退出效果
-	sprite_card.mouse_entered.connect(_on_sprite_card_mouse_entered.bind(sprite_card))
-	sprite_card.mouse_exited.connect(_on_sprite_card_mouse_exited.bind(sprite_card))
+	# 关键：禁用缩放管理器对按钮的直接缩放，改为通过全局缩放因子统一处理
+	# 移除 UIScaleManager.apply_scale_to_button(sprite_card, 18)
 	
-	# 创建垂直布局
+	sprite_card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	sprite_card.focus_mode = Control.FOCUS_NONE
+	sprite_card.toggle_mode = false
+	sprite_card.text = ""
+	sprite_card.mouse_filter = Control.MOUSE_FILTER_STOP  # 确保按钮自身拦截事件
+	
+	# 修复锚点：不使用PRESET_FULL_RECT，改为手动设置
 	var card_vbox = VBoxContainer.new()
-	card_vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	card_vbox.anchor_left = 0.0
+	card_vbox.anchor_top = 0.0
+	card_vbox.anchor_right = 1.0
+	card_vbox.anchor_bottom = 1.0
+	card_vbox.offset_left = 5  # 增加内边距，避免内容溢出
+	card_vbox.offset_top = 5
+	card_vbox.offset_right = -5
+	card_vbox.offset_bottom = -5
+	card_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sprite_card.add_child(card_vbox)
 	
-	# 精灵名称（使用全局缩放）
+	# 标签文字大小直接使用缩放后的值
 	var name_label = Label.new()
 	name_label.text = sprite.sprite_name if sprite.sprite_name else "未知"
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	UIScaleManager.apply_scale_to_label(name_label, 18)
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var scale_factor = UIScaleManager.get_scale()
+	name_label.add_theme_font_size_override("font_size", 18 * scale_factor)  # 使用缩放因子
 	card_vbox.add_child(name_label)
 	
-	# 属性（使用全局缩放）
 	var attr_label = Label.new()
 	var attribute_name = _get_attribute_name(sprite.attribute)
 	var attribute_color = _get_attribute_color(sprite.attribute)
 	attr_label.text = "属性: " + attribute_name
 	attr_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	attr_label.modulate = attribute_color
-	UIScaleManager.apply_scale_to_label(attr_label, 16)
+	attr_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	attr_label.add_theme_font_size_override("font_size", 16 * scale_factor)
 	card_vbox.add_child(attr_label)
 	
-	# 添加点击事件（通过gui_input信号）
-	sprite_card.gui_input.connect(_on_sprite_card_clicked.bind(sprite))
+	# 绑定事件（添加调试日志）
+	sprite_card.pressed.connect(func():
+		print("卡片点击触发！精灵名称：", sprite.sprite_name)
+		_on_sprite_card_pressed(sprite)
+	)
+	sprite_card.mouse_entered.connect(_on_sprite_card_mouse_entered.bind(sprite_card))
+	sprite_card.mouse_exited.connect(_on_sprite_card_mouse_exited.bind(sprite_card))
 	
 	return sprite_card
 
-func _on_sprite_card_mouse_entered(sprite_card: Panel):
+func _on_sprite_card_mouse_entered(sprite_card: Button):
 	# 鼠标进入时高亮
 	var style_box = StyleBoxFlat.new()
 	style_box.bg_color = Color(0.3, 0.3, 0.3, 1.0)
@@ -162,9 +186,10 @@ func _on_sprite_card_mouse_entered(sprite_card: Panel):
 	style_box.border_width_right = 2
 	style_box.border_width_top = 2
 	style_box.border_width_bottom = 2
-	sprite_card.add_theme_stylebox_override("panel", style_box)
+	sprite_card.add_theme_stylebox_override("normal", style_box)
+	sprite_card.add_theme_stylebox_override("hover", style_box)
 
-func _on_sprite_card_mouse_exited(sprite_card: Panel):
+func _on_sprite_card_mouse_exited(sprite_card: Button):
 	# 鼠标离开时恢复
 	var style_box = StyleBoxFlat.new()
 	style_box.bg_color = Color(0.2, 0.2, 0.2, 1.0)
@@ -173,12 +198,11 @@ func _on_sprite_card_mouse_exited(sprite_card: Panel):
 	style_box.border_width_right = 1
 	style_box.border_width_top = 1
 	style_box.border_width_bottom = 1
-	sprite_card.add_theme_stylebox_override("panel", style_box)
+	sprite_card.add_theme_stylebox_override("normal", style_box)
+	sprite_card.add_theme_stylebox_override("hover", style_box)
 
-func _on_sprite_card_clicked(event: InputEvent, sprite: Sprite):
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		# 显示精灵资料卡
-		_show_sprite_info(sprite)
+func _on_sprite_card_pressed(sprite: Sprite):
+	_show_sprite_info(sprite)
 
 func _show_sprite_info(sprite: Sprite):
 	if not sprite:

@@ -35,14 +35,18 @@ var game_map: GameMap
 var terrain_manager: TerrainManager
 var card_interface: CardSpriteInterface
 var energy_manager: EnergyManager
+var delayed_effect_manager: DelayedEffectManager
+var sprite_pool: Array[Sprite] = []
 
 signal action_resolved(action: Action, result: Dictionary)
 
-func _init(map: GameMap, terrain_mgr: TerrainManager, card_intf: CardSpriteInterface, energy_mgr: EnergyManager):
+func _init(map: GameMap, terrain_mgr: TerrainManager, card_intf: CardSpriteInterface, energy_mgr: EnergyManager, sprites_ref: Array[Sprite] = [], delayed_mgr: DelayedEffectManager = null):
 	game_map = map
 	terrain_manager = terrain_mgr
 	card_interface = card_intf
 	energy_manager = energy_mgr
+	sprite_pool = sprites_ref
+	delayed_effect_manager = delayed_mgr
 
 # 添加行动
 func add_action(player_id: int, action_type: ActionType, sprite: Sprite, target: Variant, card: Card = null, data: Dictionary = {}):
@@ -136,7 +140,7 @@ func _resolve_effect_action(action: Action) -> Dictionary:
 	if not action.card:
 		return {"success": false, "message": "无效的行动"}
 	
-	var result = card_interface.apply_card_effect(action.card, action.sprite, action.target, game_map, terrain_manager)
+	var result = _queue_card_effect(action.card, action.sprite, action.target)
 	
 	# 消耗能量
 	if result.success:
@@ -150,8 +154,7 @@ func _resolve_terrain_action(action: Action) -> Dictionary:
 	if not action.card or not action.target is Vector2i:
 		return {"success": false, "message": "无效的地形行动"}
 	
-	# 使用 apply_card_effect 统一处理地形效果（包括高度修改）
-	var result = card_interface.apply_card_effect(action.card, action.sprite, action.target, game_map, terrain_manager)
+	var result = _queue_card_effect(action.card, action.sprite, action.target)
 	
 	# 消耗能量
 	if result.success:
@@ -189,7 +192,7 @@ func _resolve_attack_action(action: Action) -> Dictionary:
 			return {"success": false, "message": "高度限制：无法攻击该目标"}
 		
 		# 使用 apply_card_effect 处理卡牌效果（包括攻击和附带的地形修改）
-		var result = card_interface.apply_card_effect(action.card, action.sprite, target, game_map, terrain_manager)
+		var result = _queue_card_effect(action.card, action.sprite, target)
 		
 		# 消耗能量
 		if result.success:
@@ -200,6 +203,15 @@ func _resolve_attack_action(action: Action) -> Dictionary:
 	
 	# 默认使用 execute_attack
 	return execute_attack(action.sprite, target, is_basic_action, player_id, action.card)
+
+func _queue_card_effect(card: Card, source_sprite: Sprite, target: Variant) -> Dictionary:
+	if not card:
+		return {"success": false, "message": "无效的卡牌"}
+	var timing = card.timing
+	if (timing == "start_of_next_turn" or timing == "") and delayed_effect_manager:
+		delayed_effect_manager.queue_card_effect(card, source_sprite, target)
+		return {"success": true, "message": "效果将在下回合初生效"}
+	return card_interface.apply_card_effect(card, source_sprite, target, game_map, terrain_manager, sprite_pool)
 
 # 执行攻击（公共方法，可直接调用）
 func execute_attack(sprite: Sprite, target: Sprite, is_basic_action: bool = false, player_id: int = -1, card: Card = null) -> Dictionary:

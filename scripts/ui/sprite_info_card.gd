@@ -208,6 +208,7 @@ func show_sprite_info(sprite: Sprite):
 	
 	current_sprite = sprite
 	tracked_sprite = sprite  # 设置跟踪的精灵（用于距离检测）
+	z_index = 1024
 	
 	visible = true
 	info_panel.visible = true

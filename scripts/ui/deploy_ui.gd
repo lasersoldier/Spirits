@@ -6,11 +6,13 @@ var sprite_selection_panel: Panel
 var selected_sprites_container: HBoxContainer
 var confirm_button: Button
 var instruction_label: Label
+var training_auto_button: Button
 
-# 选中的精灵ID列表（最多3个）
+# 选中的精灵ID列表
 var selected_sprite_ids: Array[String] = []
 # 待部署的精灵和位置配对
 var deployment_queue: Array[Dictionary] = []  # [{sprite_id: String, position: Vector2i}, ...]
+var required_sprite_count: int = 3
 
 # 游戏管理器引用
 var game_manager: GameManager
@@ -60,7 +62,9 @@ func _create_ui():
 	
 	# 说明文字（使用全局缩放）
 	instruction_label = Label.new()
-	instruction_label.text = "请选择3只精灵（从4只基础精灵中选择）"
+	instruction_label.text = "请选择" + str(required_sprite_count) + "只精灵（从4只基础精灵中选择）"
+	if _is_training_mode():
+		instruction_label.text += "，或使用一键部署"
 	instruction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	UIScaleManager.apply_scale_to_label(instruction_label, 18)
 	vbox.add_child(instruction_label)
@@ -117,7 +121,7 @@ func _create_ui():
 	
 	# 已选精灵显示区域（使用全局缩放）
 	var selected_label = Label.new()
-	selected_label.text = "已选精灵（0/3）："
+	selected_label.text = "已选精灵（0/" + str(required_sprite_count) + "）："
 	UIScaleManager.apply_scale_to_label(selected_label, 18)
 	vbox.add_child(selected_label)
 	
@@ -135,6 +139,62 @@ func _create_ui():
 	confirm_button.pressed.connect(_on_confirm_button_pressed)
 	button_container.add_child(confirm_button)
 	
+	if _is_training_mode():
+		_create_training_auto_button(button_container)
+
+func _is_training_mode() -> bool:
+	return game_manager != null and game_manager.is_training_mode_enabled()
+
+func _create_training_auto_button(button_container: HBoxContainer):
+	if training_auto_button:
+		return
+	training_auto_button = Button.new()
+	training_auto_button.text = "训练一键部署"
+	training_auto_button.tooltip_text = "自动部署四只基础属性精灵到对应位置"
+	UIScaleManager.apply_scale_to_button(training_auto_button, 18)
+	training_auto_button.pressed.connect(_on_training_auto_deploy_pressed)
+	button_container.add_child(training_auto_button)
+
+func _on_training_auto_deploy_pressed():
+	_perform_training_auto_deploy()
+
+func _perform_training_auto_deploy():
+	if not _is_training_mode():
+		return
+	if not game_map:
+		instruction_label.text = "训练一键部署失败：地图尚未就绪"
+		return
+	var target_count = required_sprite_count
+	var sprite_library = SpriteLibrary.new()
+	var base_sprites = sprite_library.get_base_sprites()
+	var sprite_ids: Array[String] = []
+	for sprite_data in base_sprites:
+		if sprite_data.is_empty():
+			continue
+		var sprite_id: String = str(sprite_data.get("id", ""))
+		if sprite_id.is_empty():
+			continue
+		sprite_ids.append(sprite_id)
+	if sprite_ids.size() < target_count:
+		instruction_label.text = "训练一键部署失败：基础精灵数量不足"
+		return
+	var deploy_positions = game_map.get_deploy_positions(GameManager.HUMAN_PLAYER_ID)
+	if deploy_positions.size() < target_count:
+		instruction_label.text = "训练一键部署失败：可用部署位置不足"
+		return
+	var selected_ids: Array[String] = []
+	var positions: Array[Vector2i] = []
+	for i in range(target_count):
+		selected_ids.append(sprite_ids[i])
+		positions.append(deploy_positions[i])
+	_complete_auto_deployment(selected_ids, positions)
+
+func _complete_auto_deployment(sprite_ids: Array[String], positions: Array[Vector2i]):
+	if terrain_renderer:
+		terrain_renderer.clear_highlights()
+	deployment_complete.emit(sprite_ids, positions)
+	queue_free()
+	
 func _on_sprite_selected(sprite_id: String, _sprite_card: Panel):
 	if current_state != DeployState.SELECTING_SPRITES:
 		return
@@ -144,15 +204,15 @@ func _on_sprite_selected(sprite_id: String, _sprite_card: Panel):
 		selected_sprite_ids.erase(sprite_id)
 		_update_selected_display()
 	else:
-		# 选择精灵（最多3个）
-		if selected_sprite_ids.size() < 3:
+		# 选择精灵（最多required_sprite_count个）
+		if selected_sprite_ids.size() < required_sprite_count:
 			selected_sprite_ids.append(sprite_id)
 			_update_selected_display()
 		else:
-			print("最多只能选择3只精灵")
+			print("最多只能选择", required_sprite_count, "只精灵")
 	
 	# 更新确认按钮状态
-	confirm_button.disabled = selected_sprite_ids.size() != 3
+	confirm_button.disabled = selected_sprite_ids.size() != required_sprite_count
 
 func _update_selected_display():
 	# 清空已选显示
@@ -162,7 +222,7 @@ func _update_selected_display():
 	# 更新标签
 	var selected_label = selected_sprites_container.get_parent().get_child(selected_sprites_container.get_index() - 1) as Label
 	if selected_label:
-		selected_label.text = "已选精灵（" + str(selected_sprite_ids.size()) + "/3）："
+		selected_label.text = "已选精灵（" + str(selected_sprite_ids.size()) + "/" + str(required_sprite_count) + "）："
 	
 	# 显示已选精灵
 	var sprite_library = SpriteLibrary.new()
@@ -196,12 +256,12 @@ func _update_selected_display():
 		card_vbox.add_child(attr_label)
 
 func _on_confirm_selection():
-	if selected_sprite_ids.size() != 3:
+	if selected_sprite_ids.size() != required_sprite_count:
 		return
 	
 	# 进入选择位置阶段
 	current_state = DeployState.SELECTING_POSITIONS
-	instruction_label.text = "请在地图上点击3个起始格子进行部署（按选择顺序）"
+	instruction_label.text = "请在地图上点击" + str(required_sprite_count) + "个起始格子进行部署（按选择顺序）"
 	confirm_button.text = "完成部署"
 	confirm_button.disabled = true
 	
@@ -265,11 +325,11 @@ func handle_map_click(hex_coord: Vector2i):
 			_update_selected_highlights()
 			
 			# 更新说明文字
-			var remaining_count = selected_sprite_ids.size() - deployment_queue.size()
+			var remaining_count = required_sprite_count - deployment_queue.size()
 			if remaining_count > 0:
-				instruction_label.text = "已选择 " + str(deployment_queue.size()) + "/3 个位置，还需选择 " + str(remaining_count) + " 个"
+				instruction_label.text = "已选择 " + str(deployment_queue.size()) + "/" + str(required_sprite_count) + " 个位置，还需选择 " + str(remaining_count) + " 个"
 			else:
-				instruction_label.text = "请在地图上点击3个起始格子进行部署（按选择顺序）"
+				instruction_label.text = "请在地图上点击" + str(required_sprite_count) + "个起始格子进行部署（按选择顺序）"
 			confirm_button.disabled = true
 			return
 	
@@ -305,9 +365,9 @@ func handle_map_click(hex_coord: Vector2i):
 		terrain_renderer.show_sprite_preview(hex_coord, sprite_id, sprite_attribute)
 	
 	# 更新说明文字
-	var remaining_count = selected_sprite_ids.size() - deployment_queue.size()
+	var remaining_count = required_sprite_count - deployment_queue.size()
 	if remaining_count > 0:
-		instruction_label.text = "已选择 " + str(deployment_queue.size()) + "/3 个位置，还需选择 " + str(remaining_count) + " 个（点击已选择位置可取消）"
+		instruction_label.text = "已选择 " + str(deployment_queue.size()) + "/" + str(required_sprite_count) + " 个位置，还需选择 " + str(remaining_count) + " 个（点击已选择位置可取消）"
 	else:
 		instruction_label.text = "已选择所有位置，点击确认完成部署（点击已选择位置可取消）"
 		confirm_button.disabled = false
@@ -336,7 +396,7 @@ func _update_selected_highlights():
 		terrain_renderer.show_sprite_preview(deploy_position, sprite_id, sprite_attribute)
 
 func _on_confirm_deployment():
-	if deployment_queue.size() != 3:
+	if deployment_queue.size() != required_sprite_count:
 		return
 	
 	# 提取精灵ID和位置

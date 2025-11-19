@@ -95,6 +95,8 @@ func _ready():
 	energy_label = get_node_or_null("EnergyLabel") as Label
 	bounty_label = get_node_or_null("BountyLabel") as Label
 	turn_timer_label = get_node_or_null("TurnTimerLabel") as Label
+	if bounty_label:
+		bounty_label.text = "赏金状态：未触发"
 	
 	# 连接手牌UI的信号
 	if hand_card_ui:
@@ -182,6 +184,8 @@ func set_game_manager(gm: GameManager):
 	if game_manager and game_manager.energy_manager:
 		game_manager.energy_manager.energy_changed.connect(_on_energy_changed)
 		_initialize_energy_display()
+	
+	_setup_training_controls()
 
 func _connect_signals():
 	if not game_manager:
@@ -224,12 +228,9 @@ func update_energy(player_id: int, energy: int):
 		energy_label.text = "能量:\n" + "\n".join(lines)
 
 # 更新赏金状态
-func update_bounty_status(has_bounty: bool, holder_pos: Vector2i):
+func update_bounty_status(status_text: String):
 	if bounty_label:
-		if has_bounty:
-			bounty_label.text = "赏金持有中 - 位置: " + str(holder_pos)
-		else:
-			bounty_label.text = "赏金未持有"
+		bounty_label.text = status_text
 
 # 更新回合倒计时
 func update_turn_timer(time_remaining: float):
@@ -287,6 +288,8 @@ func _show_deploy_ui():
 		return  # 已经显示
 	
 	deploy_ui = DeployUI.new()
+	if game_manager:
+		deploy_ui.required_sprite_count = game_manager.get_required_human_deploy_count()
 	deploy_ui.game_manager = game_manager
 	deploy_ui.sprite_deploy = game_manager.sprite_deploy
 	deploy_ui.game_map = game_manager.game_map
@@ -331,6 +334,42 @@ func _setup_map_click_handler():
 	add_child(map_click_handler)
 	print("地图点击处理器已设置")
 
+func _setup_training_controls():
+	if not game_manager or not game_manager.is_training_mode_enabled():
+		if fog_toggle_button:
+			fog_toggle_button.queue_free()
+			fog_toggle_button = null
+		return
+	
+	if fog_toggle_button:
+		_update_fog_button_text()
+		return
+	
+	fog_toggle_button = Button.new()
+	fog_toggle_button.name = "FogToggleButton"
+	fog_toggle_button.toggle_mode = true
+	fog_toggle_button.button_pressed = game_manager.is_fog_enabled()
+	fog_toggle_button.toggled.connect(_on_fog_toggle_toggled)
+	fog_toggle_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	fog_toggle_button.offset_left = 20
+	fog_toggle_button.offset_top = 20
+	fog_toggle_button.focus_mode = Control.FOCUS_NONE
+	UIScaleManager.apply_scale_to_button(fog_toggle_button, 16)
+	add_child(fog_toggle_button)
+	_update_fog_button_text()
+
+func _on_fog_toggle_toggled(pressed: bool):
+	if not game_manager:
+		return
+	game_manager.set_fog_enabled(pressed)
+	_update_fog_button_text()
+
+func _update_fog_button_text():
+	if not fog_toggle_button:
+		return
+	var state_text = "开启" if fog_toggle_button.button_pressed else "关闭"
+	fog_toggle_button.text = "战争迷雾: " + state_text
+
 func _on_hex_clicked(hex_coord: Vector2i):
 	print("=== 地图点击事件 ===")
 	print("点击六边形: ", hex_coord)
@@ -355,6 +394,9 @@ func _on_hex_clicked(hex_coord: Vector2i):
 	if deploy_ui:
 		print("处理部署UI")
 		deploy_ui.handle_map_click(hex_coord)
+		return
+	
+	_show_sprite_info_at_hex(hex_coord)
 
 func _on_deployment_complete(selected_ids: Array[String], positions: Array[Vector2i]):
 	if game_manager:
@@ -669,6 +711,15 @@ func _get_sprite_at_hex(hex_coord: Vector2i, increment_selection: bool = true) -
 		print("该位置有 ", sprites_at_position.size(), " 个精灵，当前选择: ", selected_sprite.sprite_name, " (玩家", selected_sprite.owner_player_id, ") [", last_selected_sprite_index + 1, "/", sprites_at_position.size(), "]")
 	return selected_sprite
 
+func _show_sprite_info_at_hex(hex_coord: Vector2i, increment_selection: bool = true):
+	if not game_manager:
+		return
+	var sprite = _get_sprite_at_hex(hex_coord, increment_selection)
+	if sprite and sprite_info_card:
+		sprite_info_card.show_sprite_info(sprite)
+	elif sprite_info_card and sprite_info_card.visible:
+		sprite_info_card.hide_info()
+
 # 处理鼠标中键点击（显示精灵资料卡）
 func _handle_middle_click():
 	if not game_manager:
@@ -763,27 +814,81 @@ func _enter_card_use_phase(card: Card, source_sprite: Sprite):
 			card_use_state.highlighted_hexes = positions
 		
 		"support":
-			# 辅助卡牌：高亮自己这个精灵
-			_highlight_support_target(source_sprite)
-			card_use_state.highlighted_sprites = [source_sprite]
+			if card.target_type == "ally_sprite":
+				var friendly_targets = _get_friendly_targets_in_range(card, source_sprite)
+				card_use_state.highlighted_sprites = friendly_targets
+				if friendly_targets.size() > 0:
+					_highlight_friendly_targets(friendly_targets)
+				else:
+					print("没有可选友军目标")
+					_show_message("范围内没有可选友军目标")
+			else:
+				_highlight_support_target(source_sprite)
+				card_use_state.highlighted_sprites = [source_sprite]
 	
 	print("进入卡牌使用阶段: ", card.card_name, " 类型: ", target_mode)
 
 # 根据卡牌效果标签推断目标模式
 func _get_card_target_mode(card: Card) -> String:
+	if card:
+		match card.target_type:
+			"enemy_sprite":
+				return "attack"
+			"ally_sprite", "self":
+				return "support"
+			"tile":
+				return "terrain"
 	if card and card.effects.size() > 0:
 		var primary_effect = card.effects[0]
 		if typeof(primary_effect) == TYPE_DICTIONARY:
 			var tag: String = primary_effect.get("tag", "")
 			match tag:
-				"single_attack":
+				"single_attack", "damage", "area_damage", "persistent_area_damage", "height_based_damage":
 					return "attack"
 				"terrain_change", "terrain_extend_duration":
 					return "terrain"
-				"heal":
+				"heal", "status", "apply_status":
 					return "support"
 	
 	return card.card_type
+
+func _get_card_effect_range(card: Card, source_sprite: Sprite) -> int:
+	if not card or not source_sprite:
+		return 0
+	if card.range_override > 0:
+		return card.range_override
+	match card.range_requirement:
+		"range_3":
+			return 3
+		"range_4":
+			return 4
+		"self":
+			return 0
+		"follow_caster", "within_attack_range":
+			return source_sprite.cast_range
+		_:
+			return source_sprite.cast_range
+
+func _get_friendly_targets_in_range(card: Card, source_sprite: Sprite) -> Array[Sprite]:
+	var results: Array[Sprite] = []
+	if not game_manager:
+		return results
+	if card.target_type == "self":
+		results.append(source_sprite)
+		return results
+	var friendlies = game_manager.sprite_deploy.get_player_sprites(GameManager.HUMAN_PLAYER_ID)
+	var range = _get_card_effect_range(card, source_sprite)
+	var affected_hexes: Array[Vector2i] = []
+	if range <= 0:
+		affected_hexes = [source_sprite.hex_position]
+	else:
+		affected_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, range)
+	for sprite in friendlies:
+		if not sprite or not sprite.is_alive:
+			continue
+		if sprite.hex_position in affected_hexes:
+			results.append(sprite)
+	return results
 
 # 清除卡牌使用高亮
 func _clear_card_use_highlights():
@@ -812,6 +917,13 @@ func _highlight_attack_targets(targets: Array[Sprite]):
 		print("警告: terrain_renderer 不存在，无法高亮")
 	
 	print("完成高亮，共高亮了 ", targets.size(), " 个可攻击目标")
+
+func _highlight_friendly_targets(targets: Array[Sprite]):
+	if not game_manager or not game_manager.terrain_renderer:
+		return
+	for target in targets:
+		game_manager.terrain_renderer.highlight_selected_position(target.hex_position)
+	print("高亮了 ", targets.size(), " 个可选友军目标")
 
 # 高亮地形放置位置
 func _highlight_terrain_positions(positions: Array[Vector2i]):
@@ -866,13 +978,16 @@ func _handle_card_target_selection(hex_coord: Vector2i):
 			_show_message("请点击高亮的地形位置")
 		
 		"support":
-			# 辅助卡牌：检查点击的是否是自己
-			if source_sprite.hex_position == hex_coord:
-				# 确认使用卡牌
-				_confirm_card_use(card, source_sprite, source_sprite)
-				return
-			print("未点击自己的精灵")
-			_show_message("请点击己方精灵以施放辅助卡")
+			# 辅助卡牌：检查点击的是否是高亮的友军
+			for target_sprite in card_use_state.highlighted_sprites:
+				if target_sprite.hex_position == hex_coord:
+					var applied_target = target_sprite
+					if card.target_type == "self":
+						applied_target = source_sprite
+					_confirm_card_use(card, source_sprite, applied_target)
+					return
+			print("未点击有效的辅助目标")
+			_show_message("请选择高亮的友方精灵")
 
 # 确认使用卡牌
 func _confirm_card_use(card: Card, source_sprite: Sprite, target: Variant):
@@ -916,6 +1031,8 @@ func _confirm_card_use(card: Card, source_sprite: Sprite, target: Variant):
 		_exit_card_use_phase()
 		return
 	
+	if result.message and not String(result.message).is_empty():
+		_show_message(result.message)
 	# 从手牌中移除卡牌（已添加到队列，可以移除）
 	var hand_manager = game_manager.hand_managers.get(GameManager.HUMAN_PLAYER_ID)
 	if hand_manager:
@@ -990,6 +1107,8 @@ var right_drag_highlight_state: Dictionary = {
 	"highlighted_sprites": [],
 	"highlighted_hexes": []
 }
+
+var fog_toggle_button: Button = null
 
 # 清除卡牌目标高亮
 func _clear_card_target_highlight():

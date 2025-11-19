@@ -10,11 +10,13 @@ var selected_highlight_nodes: Dictionary = {}  # key: hex_coord string, value: M
 var preview_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（精灵预览）
 var contest_point_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（争夺点地标）
 var water_source_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（水源标记）
+var bounty_zone_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（赏金区域高亮）
 
 # 战争迷雾系统
 var fog_of_war_manager: FogOfWarManager = null
 var current_player_id: int = -1
 var fog_overlay_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（迷雾覆盖层）
+var fog_enabled: bool = true
 
 func _init(map: GameMap):
 	game_map = map
@@ -49,6 +51,7 @@ func _render_all_terrain():
 			_render_terrain_tile(coord, terrain)
 
 	_render_contest_point_markers()
+	_render_bounty_zone_highlights()
 	
 	print("TerrainRenderer: 完成渲染，共 ", terrain_nodes.size(), " 个地形节点")
 	
@@ -107,12 +110,27 @@ func _render_contest_point_markers():
 		if coord is Vector2i:
 			_create_contest_point_marker(coord)
 
+func _render_bounty_zone_highlights():
+	_clear_bounty_zone_highlights()
+	if not game_map:
+		return
+	for coord in game_map.bounty_zone_tiles:
+		if coord is Vector2i:
+			_create_bounty_zone_highlight(coord)
+
 func _clear_contest_point_markers():
 	for key in contest_point_nodes.keys():
 		var node = contest_point_nodes[key]
 		if is_instance_valid(node):
 			node.queue_free()
 	contest_point_nodes.clear()
+
+func _clear_bounty_zone_highlights():
+	for key in bounty_zone_nodes.keys():
+		var node = bounty_zone_nodes[key]
+		if is_instance_valid(node):
+			node.queue_free()
+	bounty_zone_nodes.clear()
 
 func _create_contest_point_marker(coord: Vector2i):
 	var key = _coord_to_key(coord)
@@ -149,6 +167,36 @@ func _create_contest_point_marker(coord: Vector2i):
 	mesh_instance.position = world_pos
 	add_child(mesh_instance)
 	contest_point_nodes[key] = mesh_instance
+
+func _create_bounty_zone_highlight(coord: Vector2i):
+	var key = _coord_to_key(coord)
+	if bounty_zone_nodes.has(key):
+		var existing = bounty_zone_nodes[key]
+		if is_instance_valid(existing):
+			existing.queue_free()
+		bounty_zone_nodes.erase(key)
+	var mesh_instance = MeshInstance3D.new()
+	var hex_size = game_map.hex_size if game_map else 1.5
+	var mesh = ModelGenerator.create_hex_terrain_mesh(hex_size * 1.05, 0.15)
+	mesh_instance.mesh = mesh
+	var material = StandardMaterial3D.new()
+	material.albedo_color = Color(1.0, 0.55, 0.1, 0.5)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.emission_enabled = true
+	material.emission = Color(1.0, 0.45, 0.05, 0.8)
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_instance.material_override = material
+	var map_height = game_map.map_height if game_map else 20
+	var map_width = game_map.map_width if game_map else 20
+	var world_pos = HexGrid.hex_to_world(coord, hex_size, map_height, map_width)
+	var terrain = game_map.get_terrain(coord) if game_map else null
+	var terrain_height = 3.0
+	if terrain:
+		terrain_height = _get_height_for_level(terrain.height_level)
+	world_pos.y = terrain_height + 0.2
+	mesh_instance.position = world_pos
+	add_child(mesh_instance)
+	bounty_zone_nodes[key] = mesh_instance
 
 func _create_water_source_marker(coord: Vector2i, terrain: TerrainTile):
 	var key = _coord_to_key(coord)
@@ -236,6 +284,25 @@ func _update_contest_marker_position(hex_coord: Vector2i):
 	
 	marker.position = world_pos
 
+func _update_bounty_zone_highlight_position(hex_coord: Vector2i):
+	var key = _coord_to_key(hex_coord)
+	if not bounty_zone_nodes.has(key):
+		return
+	var marker = bounty_zone_nodes[key]
+	if not is_instance_valid(marker):
+		bounty_zone_nodes.erase(key)
+		return
+	var hex_size = game_map.hex_size if game_map else 1.5
+	var map_height = game_map.map_height if game_map else 20
+	var map_width = game_map.map_width if game_map else 20
+	var world_pos = HexGrid.hex_to_world(hex_coord, hex_size, map_height, map_width)
+	var terrain = game_map.get_terrain(hex_coord) if game_map else null
+	var terrain_height = 3.0
+	if terrain:
+		terrain_height = _get_height_for_level(terrain.height_level)
+	world_pos.y = terrain_height + 0.2
+	marker.position = world_pos
+
 func _get_height_for_level(level: int) -> float:
 	match level:
 		1:
@@ -295,6 +362,7 @@ func _on_terrain_changed(hex_coord: Vector2i, terrain: TerrainTile):
 	# 地形变化后更新高亮节点位置（因为高度可能改变）
 	_update_highlight_positions(hex_coord)
 	_update_contest_marker_position(hex_coord)
+	_update_bounty_zone_highlight_position(hex_coord)
 	# 更新水源标记位置（如果高度改变）
 	_update_water_source_marker_position(hex_coord, terrain)
 	# 地形变化后更新迷雾覆盖层（因为高度可能改变）
@@ -315,6 +383,12 @@ func set_fog_manager(manager: FogOfWarManager, player_id: int):
 	# 初始化迷雾覆盖层
 	call_deferred("_update_fog_overlay")
 
+func set_fog_enabled(enabled: bool):
+	fog_enabled = enabled
+	if not fog_enabled:
+		_clear_fog_overlays()
+	_update_fog_overlay()
+
 # 视野更新处理
 func _on_vision_updated(_player_id: int):
 	# 只更新当前玩家的视野显示
@@ -323,7 +397,11 @@ func _on_vision_updated(_player_id: int):
 
 # 更新迷雾覆盖层
 func _update_fog_overlay():
+	if not fog_enabled:
+		_clear_fog_overlays()
+		return
 	if not fog_of_war_manager or current_player_id < 0:
+		_clear_fog_overlays()
 		return
 	
 	if not game_map:
@@ -388,6 +466,13 @@ func _create_fog_overlay(hex_coord: Vector2i):
 	
 	add_child(mesh_instance)
 	fog_overlay_nodes[key] = mesh_instance
+
+func _clear_fog_overlays():
+	for key in fog_overlay_nodes.keys():
+		var fog_node = fog_overlay_nodes[key]
+		if is_instance_valid(fog_node):
+			fog_node.queue_free()
+	fog_overlay_nodes.clear()
 
 # 高亮显示可部署位置
 func highlight_deploy_positions(positions: Array[Vector2i]):

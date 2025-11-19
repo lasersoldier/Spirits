@@ -4,8 +4,10 @@ extends RefCounted
 # 赏金状态
 enum BountyStatus {
 	NONE,        # 未生成
+	PENDING,     # 已触发待生成
 	GENERATED,   # 已生成
-	HELD         # 被持有
+	HELD,        # 被持有
+	DROPPED      # 掉落待拾取
 }
 
 # 赏金状态
@@ -14,8 +16,16 @@ var bounty_status: BountyStatus = BountyStatus.NONE
 # 持有赏金的精灵
 var bounty_holder: Sprite = null
 
+# 赏金当前所在格（生成时）
+var bounty_hex: Vector2i = Vector2i(-1, -1)
+# 赏金掉落格
+var dropped_hex: Vector2i = Vector2i(-1, -1)
+
 # 首次触发赏金生成的玩家ID
 var first_trigger_player_id: int = -1
+
+# 待生成的回合
+var pending_round: int = -1
 
 # 公共争夺点状态（key: 争夺点ID, value: 占领信息）
 var contest_point_states: Dictionary = {}
@@ -58,38 +68,54 @@ func _initialize_contest_points():
 		contest_point_states[i] = state
 
 # 检查是否有精灵进入赏金区域（回合开始时调用）
-func check_bounty_generation(entering_sprites: Array[Sprite]):
+func check_bounty_generation(entering_sprites: Array[Sprite], current_round: int):
 	if bounty_status != BountyStatus.NONE:
 		return
 	
 	# 检查是否有精灵进入赏金区域
 	for sprite in entering_sprites:
 		if game_map.is_in_bounty_zone(sprite.hex_position):
-			# 首次进入，触发赏金生成
-			generate_bounty(sprite.owner_player_id)
+			# 首次进入，触发下一回合生成
+			bounty_status = BountyStatus.PENDING
+			first_trigger_player_id = sprite.owner_player_id
+			pending_round = current_round + 1
 			break
 
+# 处理待生成赏金
+func process_pending_bounty(all_sprites: Array[Sprite], current_round: int):
+	if bounty_status != BountyStatus.PENDING:
+		return
+	if pending_round == -1 or pending_round > current_round:
+		return
+	generate_bounty(all_sprites)
+	
 # 生成赏金
-func generate_bounty(trigger_player_id: int):
-	if bounty_status != BountyStatus.NONE:
+func generate_bounty(all_sprites: Array[Sprite]):
+	if bounty_status != BountyStatus.PENDING:
 		return
 	
 	bounty_status = BountyStatus.GENERATED
-	first_trigger_player_id = trigger_player_id
-	
+	dropped_hex = Vector2i(-1, -1)
+	pending_round = -1
+	var spawn_hex = _select_bounty_hex(all_sprites)
+	bounty_hex = spawn_hex
+
 	# 播报赏金生成位置
-	var bounty_center = game_map.bounty_zone_tiles[0]  # 使用第一个坐标作为中心
-	bounty_generated.emit(bounty_center)
+	bounty_generated.emit(bounty_hex)
 
 # 争夺赏金（回合结算时调用）
 func contest_bounty(candidates: Array[Sprite]) -> Sprite:
-	if bounty_status != BountyStatus.GENERATED:
+	if bounty_status != BountyStatus.GENERATED and bounty_status != BountyStatus.DROPPED:
 		return null
 	
-	# 筛选在赏金区域内的精灵
+	var target_hex = get_active_bounty_hex()
+	if target_hex == Vector2i(-1, -1):
+		return null
+
+	# 筛选在赏金位置的精灵
 	var in_zone: Array[Sprite] = []
 	for sprite in candidates:
-		if sprite.is_alive and game_map.is_in_bounty_zone(sprite.hex_position):
+		if sprite.is_alive and sprite.hex_position == target_hex:
 			in_zone.append(sprite)
 	
 	if in_zone.is_empty():
@@ -103,17 +129,12 @@ func contest_bounty(candidates: Array[Sprite]) -> Sprite:
 	
 	return winner
 
-# 判定赏金归属（优先级：首次触发玩家>血量>能量点数）
+# 判定赏金归属（优先级：血量>能量>默认顺序）
 func _determine_bounty_winner(candidates: Array[Sprite]) -> Sprite:
 	if candidates.size() == 1:
 		return candidates[0]
 	
-	# 优先级1：首次触发玩家的精灵
-	for sprite in candidates:
-		if sprite.owner_player_id == first_trigger_player_id:
-			return sprite
-	
-	# 优先级2：血量最高
+	# 优先级1：血量最高
 	var max_hp = -1
 	var hp_candidates: Array[Sprite] = []
 	for sprite in candidates:
@@ -126,7 +147,7 @@ func _determine_bounty_winner(candidates: Array[Sprite]) -> Sprite:
 	if hp_candidates.size() == 1:
 		return hp_candidates[0]
 	
-	# 优先级3：能量点数最高
+	# 优先级2：能量点数最高（若血量相同）
 	var max_energy = -1
 	var winner: Sprite = null
 	for sprite in hp_candidates:
@@ -135,7 +156,17 @@ func _determine_bounty_winner(candidates: Array[Sprite]) -> Sprite:
 			max_energy = energy
 			winner = sprite
 	
-	return winner if winner else hp_candidates[0]
+	if winner:
+		return winner
+
+	# 最终兜底：按玩家ID和精灵ID排序
+	hp_candidates.sort_custom(Callable(self, "_compare_bounty_sprites"))
+	return hp_candidates[0]
+
+func _compare_bounty_sprites(a: Sprite, b: Sprite) -> bool:
+	if a.owner_player_id == b.owner_player_id:
+		return a.sprite_id < b.sprite_id
+	return a.owner_player_id < b.owner_player_id
 
 # 获得赏金
 func acquire_bounty(sprite: Sprite):
@@ -144,6 +175,8 @@ func acquire_bounty(sprite: Sprite):
 	
 	bounty_status = BountyStatus.HELD
 	bounty_holder = sprite
+	bounty_hex = Vector2i(-1, -1)
+	dropped_hex = Vector2i(-1, -1)
 	sprite.acquire_bounty()
 	bounty_acquired.emit(sprite)
 	
@@ -156,11 +189,13 @@ func lose_bounty():
 		return
 	
 	var holder = bounty_holder
+	var drop_position = holder.hex_position
 	bounty_holder.lose_bounty()
 	bounty_lost.emit(holder)
 	
 	bounty_holder = null
-	bounty_status = BountyStatus.GENERATED  # 下次回合开始时重新生成
+	dropped_hex = drop_position
+	bounty_status = BountyStatus.DROPPED
 
 # 检查公共争夺点占领（回合结束时调用）
 func check_contest_points(sprites: Array[Sprite], current_round_num: int):
@@ -229,7 +264,51 @@ func get_bounty_holder_position() -> Vector2i:
 		return bounty_holder.hex_position
 	return Vector2i(-1, -1)
 
+# 获取当前赏金所在位置（未被持有时）
+func get_active_bounty_hex() -> Vector2i:
+	match bounty_status:
+		BountyStatus.GENERATED:
+			return bounty_hex
+		BountyStatus.DROPPED:
+			return dropped_hex
+		_:
+			return Vector2i(-1, -1)
+
 # 检查是否持有赏金
 func is_bounty_held() -> bool:
 	return bounty_status == BountyStatus.HELD and bounty_holder != null and bounty_holder.is_alive
 
+func get_pending_round() -> int:
+	return pending_round
+
+func _select_bounty_hex(all_sprites: Array[Sprite]) -> Vector2i:
+	var candidates: Array[Vector2i] = []
+	for coord in game_map.bounty_zone_tiles:
+		if game_map.is_valid_hex_with_terrain(coord):
+			candidates.append(coord)
+	if candidates.is_empty():
+		return Vector2i.ZERO
+
+	var reference_positions: Array[Vector2i] = []
+	for sprite in all_sprites:
+		if sprite.is_alive:
+			reference_positions.append(sprite.hex_position)
+
+	if reference_positions.is_empty():
+		return candidates[0]
+
+	var best_hex = candidates[0]
+	var best_sum = -INF
+	var best_min = -INF
+	for candidate in candidates:
+		var total_distance = HexGrid.sum_distance_to_points(candidate, reference_positions)
+		var min_distance = INF
+		for ref in reference_positions:
+			var distance = HexGrid.hex_distance(candidate, ref)
+			min_distance = min(min_distance, distance)
+		if total_distance > best_sum or (total_distance == best_sum and min_distance > best_min):
+			best_sum = total_distance
+			best_min = min_distance
+			best_hex = candidate
+
+	return best_hex

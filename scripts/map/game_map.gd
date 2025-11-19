@@ -1,6 +1,8 @@
 class_name GameMap
 extends Node3D
 
+@export_file("*.json") var map_config_path: String = "res://resources/data/map_config.json"
+
 # 地图配置
 var map_width: int = 15
 var map_height: int = 15
@@ -26,12 +28,16 @@ var contest_points: Array[Vector2i] = []
 var region_configs: Array = []
 var path_configs: Array = []
 var resource_points: Array = []
+var training_enemy_configs: Array = []
 
 # 地图边界（用于判断坐标是否有效）
 var map_bounds: Rect2i
 
 # 坐标偏移量（用于将实际地形的最小坐标映射到(0,0)）
 var coord_offset: Vector2i = Vector2i.ZERO
+
+# 原始配置数据（用于自定义模式，如训练场）
+var map_config_data: Dictionary = {}
 
 signal terrain_changed(hex_coord: Vector2i, terrain: TerrainTile)
 
@@ -47,9 +53,10 @@ func _ready():
 	_load_map_config()
 
 func _load_map_config():
-	var config_file = FileAccess.open("res://resources/data/map_config.json", FileAccess.READ)
+	var path = map_config_path if map_config_path != "" else "res://resources/data/map_config.json"
+	var config_file = FileAccess.open(path, FileAccess.READ)
 	if not config_file:
-		push_error("无法加载地图配置文件")
+		push_error("无法加载地图配置文件: " + path)
 		return
 	
 	var json_string = config_file.get_as_text()
@@ -58,16 +65,26 @@ func _load_map_config():
 	var json = JSON.new()
 	var parse_result = json.parse(json_string)
 	if parse_result != OK:
-		push_error("地图配置JSON解析失败")
+		push_error("地图配置JSON解析失败: " + path)
 		return
 	
 	var config = json.data
+	if typeof(config) != TYPE_DICTIONARY:
+		push_error("地图配置数据格式错误: " + path)
+		return
+	
+	map_config_data = config
 	map_width = config.get("map_size", {}).get("width", 15)
 	map_height = config.get("map_size", {}).get("height", 15)
 	hex_size = config.get("hex_size", 1.0)
 	region_configs = config.get("regions", [])
 	path_configs = config.get("paths", [])
 	resource_points = config.get("resource_points", [])
+	training_enemy_configs.clear()
+	var raw_training = config.get("training_enemies", [])
+	for entry in raw_training:
+		if entry is Dictionary:
+			training_enemy_configs.append(entry.duplicate(true))
 	
 	# 加载起始点
 	var spawn_points_raw = config.get("spawn_points", [])
@@ -84,17 +101,27 @@ func _load_map_config():
 	var bounty_config = config.get("bounty_zone", {})
 	var bounty_tiles_config = bounty_config.get("tiles", [])
 	bounty_zone_tiles.clear()
+	var fallback_center = Vector2i(int(map_width / 2), int(map_height / 2))
+	var center_dict = bounty_config.get("center", {})
+	var configured_center = Vector2i(center_dict.get("q", fallback_center.x), center_dict.get("r", fallback_center.y))
+	var radius = bounty_config.get("radius", 0)
 	if bounty_tiles_config.size() > 0:
 		for tile_config in bounty_tiles_config:
-			bounty_zone_tiles.append(Vector2i(tile_config.q, tile_config.r))
+			var tile = Vector2i(tile_config.q, tile_config.r)
+			if _is_valid_hex(tile):
+				bounty_zone_tiles.append(tile)
+	elif radius > 0:
+		var zone_candidates = HexGrid.get_hexes_in_range(configured_center, radius)
+		for candidate in zone_candidates:
+			if HexGrid.hex_distance(configured_center, candidate) == 0:
+				continue
+			if _is_valid_hex(candidate):
+				bounty_zone_tiles.append(candidate)
 	else:
-		var center_dict = bounty_config.get("center", {})
-		var center = Vector2i(center_dict.get("q", 0), center_dict.get("r", 0))
-		var radius = bounty_config.get("radius", 0)
-		if radius > 0:
-			bounty_zone_tiles = HexGrid.get_hexes_in_range(center, radius)
-		elif center_dict.size() > 0:
-			bounty_zone_tiles.append(center)
+		bounty_zone_tiles = _compute_default_bounty_zone(configured_center)
+	
+	if bounty_zone_tiles.is_empty():
+		bounty_zone_tiles = _compute_default_bounty_zone(configured_center)
 	
 	# 加载争夺点
 	var contest_configs = config.get("contest_points", [])
@@ -225,6 +252,7 @@ func _adjust_coordinate_offset():
 		map_bounds = Rect2i(0, 0, int(max_q) + 1, int(max_r) + 1)
 	
 	_rebuild_spawn_point_lookup()
+	_adjust_training_enemy_coords()
 	
 	print("坐标偏移调整完成，地形现在从(0,0)开始")
 
@@ -442,7 +470,8 @@ func _create_region(region: Dictionary) -> void:
 	var radius = region.get("radius", 3)
 	var terrain_type = _terrain_type_from_string(region.get("terrain_type", "normal"))
 	var height = region.get("height", 1)
-	_paint_hex_area(center, radius, terrain_type, height)
+	var is_water_source = region.get("is_water_source", false)
+	_paint_hex_area(center, radius, terrain_type, height, is_water_source)
 
 func _create_path(path_config: Dictionary) -> void:
 	var from_coord = _dict_to_coord(path_config.get("from", {}))
@@ -456,12 +485,28 @@ func _create_path(path_config: Dictionary) -> void:
 	for coord in line:
 		_paint_hex_area(coord, width, terrain_type, height)
 
-func _paint_hex_area(center: Vector2i, radius: int, terrain_type: TerrainTile.TerrainType, height: int) -> void:
+func _compute_default_bounty_zone(center: Vector2i) -> Array[Vector2i]:
+	var zone: Array[Vector2i] = []
+	var candidates = HexGrid.get_hexes_in_range_with_bounds(center, 1, 2)
+	for coord in candidates:
+		if _is_valid_hex(coord):
+			zone.append(coord)
+	if zone.is_empty():
+		var neighbors = HexGrid.get_neighbors(center)
+		for neighbor in neighbors:
+			if _is_valid_hex(neighbor):
+				zone.append(neighbor)
+	return zone
+
+func _paint_hex_area(center: Vector2i, radius: int, terrain_type: TerrainTile.TerrainType, height: int, mark_water_source: bool = false) -> void:
 	var tiles = HexGrid.get_hexes_in_range(center, radius)
 	for coord in tiles:
 		# 检查坐标是否在地图边界内
 		if coord.x >= 0 and coord.x < map_width and coord.y >= 0 and coord.y < map_height:
 			var terrain = TerrainTile.new(coord, terrain_type, height)
+			if terrain_type == TerrainTile.TerrainType.WATER:
+				if mark_water_source or height > 1:
+					terrain.is_water_source = true
 			_set_terrain(coord, terrain)
 
 func _terrain_type_from_string(type_name: String) -> TerrainTile.TerrainType:
@@ -500,3 +545,21 @@ func _rebuild_spawn_point_lookup() -> void:
 			var pid = int(spawn.get("player_id", -1))
 			if pid >= 0:
 				spawn_points_by_player[pid] = spawn
+
+func _adjust_training_enemy_coords():
+	if training_enemy_configs.is_empty():
+		return
+	for entry in training_enemy_configs:
+		if not entry is Dictionary:
+			continue
+		var coord = entry.get("hex_coord", {})
+		if coord is Dictionary:
+			coord["q"] = coord.get("q", 0) - coord_offset.x
+			coord["r"] = coord.get("r", 0) - coord_offset.y
+
+func get_training_enemy_configs() -> Array[Dictionary]:
+	var configs: Array[Dictionary] = []
+	for entry in training_enemy_configs:
+		if entry is Dictionary:
+			configs.append(entry.duplicate(true))
+	return configs

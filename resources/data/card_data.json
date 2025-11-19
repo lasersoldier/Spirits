@@ -1,357 +1,386 @@
 {
+  "schema_version": 2,
+  "default_timing": "start_of_next_turn",
   "cards": [
     {
-      "id": "C01",
-      "name": "火焰冲击",
+      "id": "F01",
+      "name": "火球术",
       "attributes": ["fire"],
-      "energy_cost": 1,
+      "energy_cost": 3,
       "type": "attack",
-      "effect": "对目标精灵造成3点伤害，若目标处于森林地形，额外造成1点伤害",
+      "effect": "对某精灵造成3点伤害，跟随精灵施法范围，选中对象为敌方精灵。效果（单体伤害）",
       "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
       "effects": [
         {
-          "tag": "single_attack",
-          "damage": 3,
-          "bonus_vs_terrain": [
-            { "terrain": "forest", "bonus": 1 }
-          ]
+          "tag": "damage",
+          "amount": 3,
+          "target_scope": "primary"
         }
       ]
     },
     {
-      "id": "C02",
-      "name": "风刃",
-      "attributes": ["wind"],
-      "energy_cost": 1,
-      "type": "attack",
-      "effect": "对直线2格内目标精灵造成2点伤害，无视中间1格地形",
-      "target_type": "enemy_sprite",
-      "range_requirement": "line_2_tiles",
-      "effects": [
-        {
-          "tag": "single_attack",
-          "damage": 2
-        }
-      ]
-    },
-    {
-      "id": "C03",
-      "name": "水流召唤",
-      "attributes": ["water"],
-      "energy_cost": 1,
-      "type": "terrain",
-      "effect": "在自身精灵相邻1格创建1格水流地形",
-      "target_type": "adjacent_tile",
-      "range_requirement": "adjacent",
-      "effects": [
-        {
-          "tag": "terrain_change",
-          "terrain_type": "water"
-        }
-      ]
-    },
-    {
-      "id": "C04",
-      "name": "岩击",
-      "attributes": ["rock"],
-      "energy_cost": 1,
-      "type": "attack",
-      "effect": "对目标精灵造成2点伤害，若目标处于基岩地形，伤害+1",
-      "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range",
-      "effects": [
-        {
-          "tag": "single_attack",
-          "damage": 2,
-          "bonus_vs_terrain": [
-            { "terrain": "bedrock", "bonus": 1 }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "C05",
-      "name": "风火斩",
-      "attributes": ["wind", "fire"],
+      "id": "F02",
+      "name": "火雨",
+      "attributes": ["fire"],
       "energy_cost": 2,
       "type": "attack",
-      "effect": "对目标精灵及相邻1格精灵造成2点伤害",
-      "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range",
+      "effect": "对半径2格造成1点伤害，跟随精灵施法范围，选中对象地块，持续2回合。效果（范围持续群体伤害）",
+      "target_type": "tile",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
       "effects": [
         {
-          "tag": "single_attack",
-          "damage": 2
+          "tag": "persistent_area_damage",
+          "center": "target_tile",
+          "radius": 2,
+          "damage": 1,
+          "duration": 2,
+          "affects": "enemies"
         }
       ]
     },
     {
-      "id": "C06",
-      "name": "水火共鸣",
-      "attributes": ["water", "fire"],
+      "id": "F03",
+      "name": "光击阵",
+      "attributes": ["fire"],
+      "energy_cost": 2,
+      "type": "attack",
+      "effect": "对半径1格造成1点伤害，施法范围3格，选中对象地块。效果（范围群体伤害，会烧毁森林变为焦土）",
+      "target_type": "tile",
+      "range_requirement": "range_3",
+      "timing": "start_of_next_turn",
+      "effects": [
+        {
+          "tag": "area_damage",
+          "center": "target_tile",
+          "radius": 1,
+          "damage": 1,
+          "affects": "enemies",
+          "burn_forest": true
+        }
+      ]
+    },
+    {
+      "id": "W01",
+      "name": "滴水穿石",
+      "attributes": ["water"],
       "energy_cost": 3,
+      "type": "attack",
+      "effect": "对半径1格造成1点伤害，施法范围3格，持续3回合，选中对象地块。3回合结束后，选中地块创建水流地形。效果（范围持续群体伤害，计时结束后创建水流地形）",
+      "target_type": "tile",
+      "range_requirement": "range_3",
+      "timing": "start_of_next_turn",
+      "effects": [
+        {
+          "tag": "persistent_area_damage",
+          "center": "target_tile",
+          "radius": 1,
+          "damage": 1,
+          "duration": 3,
+          "affects": "enemies",
+          "final_terrain": {
+            "terrain_type": "water"
+          }
+        }
+      ]
+    },
+    {
+      "id": "W02",
+      "name": "高压水枪",
+      "attributes": ["water"],
+      "energy_cost": 3,
+      "type": "attack",
+      "effect": "对某精灵造成2点伤害，跟随精灵施法范围，选中对象为敌方精灵。效果（单体伤害）",
+      "target_type": "enemy_sprite",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
+      "effects": [
+        {
+          "tag": "damage",
+          "amount": 2,
+          "target_scope": "primary"
+        }
+      ]
+    },
+    {
+      "id": "W03",
+      "name": "温泉疗愈",
+      "attributes": ["water"],
+      "energy_cost": 2,
       "type": "support",
-      "effect": "自身水、火属性精灵各恢复2点血量，同时对周围1格敌方精灵造成1点伤害",
-      "target_type": "self",
-      "range_requirement": "none",
+      "effect": "为某精灵回复2点生命值，跟随精灵施法范围，选中对象为友方精灵。效果（恢复）",
+      "target_type": "ally_sprite",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
       "effects": [
         {
           "tag": "heal",
           "amount": 2,
-          "target": "self"
+          "target_scope": "primary"
         }
       ]
     },
     {
-      "id": "C07",
-      "name": "火岩爆",
-      "attributes": ["fire", "rock"],
+      "id": "A01",
+      "name": "狂风大作",
+      "attributes": ["wind"],
       "energy_cost": 2,
       "type": "attack",
-      "effect": "对目标精灵造成3点伤害，同时将目标所在地形降低1级（最低1级）",
+      "effect": "对某精灵造成1点伤害并击退，施法范围4格，选中对象为敌方精灵。效果（单体伤害，击退）",
       "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range",
+      "range_requirement": "range_4",
+      "timing": "start_of_next_turn",
       "effects": [
         {
-          "tag": "single_attack",
-          "damage": 3,
-          "terrain_height_delta": -1
+          "tag": "damage",
+          "amount": 1,
+          "target_scope": "primary",
+          "knockback": {
+            "distance": 1,
+            "blocked_damage": 1
+          }
         }
       ]
     },
     {
-      "id": "C08",
-      "name": "风水流",
-      "attributes": ["wind", "water"],
+      "id": "A02",
+      "name": "腾云驾雾",
+      "attributes": ["wind"],
       "energy_cost": 2,
-      "type": "terrain",
-      "effect": "在指定3格范围内创建1格水流地形（需与自身精灵相邻）",
-      "target_type": "adjacent_tile",
-      "range_requirement": "adjacent_3_tiles",
+      "type": "support",
+      "effect": "使某个友方精灵移动范围+1，持续3回合。效果（属性增益）",
+      "target_type": "ally_sprite",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
       "effects": [
         {
-          "tag": "terrain_change",
-          "terrain_type": "water"
+          "tag": "apply_status",
+          "status_id": "wind_speed",
+          "duration": 3,
+          "modifiers": {
+            "movement_range_bonus": 1
+          }
         }
       ]
     },
     {
-      "id": "C09",
-      "name": "风岩斩",
-      "attributes": ["wind", "rock"],
-      "energy_cost": 2,
-      "type": "attack",
-      "effect": "对目标精灵及相邻1格精灵造成2点伤害，同时将目标所在地形降低1级（最低1级）",
-      "target_type": "enemy_sprite",
-      "range_requirement": "within_attack_range",
-      "effects": [
-        {
-          "tag": "single_attack",
-          "damage": 2,
-          "terrain_height_delta": -1
-        }
-      ]
-    },
-    {
-      "id": "C11",
-      "name": "地陷",
-      "attributes": ["rock"],
-      "energy_cost": 1,
-      "type": "terrain",
-      "effect": "将目标地形降低1级（最低1级）",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
-      "effects": [
-        {
-          "tag": "terrain_change",
-          "terrain_type": "normal",
-          "height_delta": -1
-        }
-      ]
-    },
-    {
-      "id": "C12",
-      "name": "地陷深坑",
+      "id": "R01",
+      "name": "拔地而起",
       "attributes": ["rock"],
       "energy_cost": 2,
       "type": "terrain",
-      "effect": "将目标地形降低2级（最低1级）",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
+      "effect": "抬高某个地块两级，跟随精灵施法范围，选中对象地块。效果（地形改变）",
+      "target_type": "tile",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
       "effects": [
         {
           "tag": "terrain_change",
-          "terrain_type": "normal",
-          "height_delta": -2
-        }
-      ]
-    },
-    {
-      "id": "C13",
-      "name": "地隆起",
-      "attributes": ["rock"],
-      "energy_cost": 1,
-      "type": "terrain",
-      "effect": "将目标地形抬高1级（最高3级）",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
-      "effects": [
-        {
-          "tag": "terrain_change",
-          "terrain_type": "normal",
-          "height_delta": 1
-        }
-      ]
-    },
-    {
-      "id": "C14",
-      "name": "地隆起高峰",
-      "attributes": ["rock"],
-      "energy_cost": 2,
-      "type": "terrain",
-      "effect": "将目标地形抬高2级（最高3级）",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
-      "effects": [
-        {
-          "tag": "terrain_change",
-          "terrain_type": "normal",
+          "target_scope": "target_tile",
           "height_delta": 2
         }
       ]
     },
     {
-      "id": "C15",
-      "name": "水流涌动",
-      "attributes": ["water"],
+      "id": "R02",
+      "name": "岩突",
+      "attributes": ["rock"],
       "energy_cost": 2,
       "type": "terrain",
-      "effect": "在指定位置创建1格水流地形",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
+      "effect": "抬高某个地块一级，跟随精灵施法范围，选中对象地块。效果（地形改变）",
+      "target_type": "tile",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
       "effects": [
         {
           "tag": "terrain_change",
-          "terrain_type": "water"
-        }
-      ]
-    },
-    {
-      "id": "C16",
-      "name": "水流蔓延",
-      "attributes": ["water"],
-      "energy_cost": 3,
-      "type": "terrain",
-      "effect": "在指定位置创建1格水流地形，可多次使用创建多格",
-      "target_type": "adjacent_tile",
-      "range_requirement": "adjacent_2_tiles",
-      "effects": [
-        {
-          "tag": "terrain_change",
-          "terrain_type": "water"
-        }
-      ]
-    },
-    {
-      "id": "C17",
-      "name": "湖泊形成",
-      "attributes": ["water"],
-      "energy_cost": 4,
-      "type": "terrain",
-      "effect": "在指定位置创建1格水流地形，同时将地形抬高1级（最高3级）",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
-      "effects": [
-        {
-          "tag": "terrain_change",
-          "terrain_type": "water",
+          "target_scope": "target_tile",
           "height_delta": 1
         }
       ]
     },
     {
-      "id": "C18",
-      "name": "急流冲刷",
-      "attributes": ["water"],
+      "id": "R03",
+      "name": "落穴术",
+      "attributes": ["rock"],
       "energy_cost": 2,
       "type": "terrain",
-      "effect": "在指定位置创建1格水流地形，同时将地形降低1级（最低1级）",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
+      "effect": "降低某个地块一级，跟随精灵施法范围，选中对象地块。效果（地形改变）",
+      "target_type": "tile",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
       "effects": [
         {
           "tag": "terrain_change",
-          "terrain_type": "water",
+          "target_scope": "target_tile",
           "height_delta": -1
         }
       ]
     },
     {
-      "id": "C19",
-      "name": "地势平缓",
+      "id": "R04",
+      "name": "坠岩深洼",
       "attributes": ["rock"],
-      "energy_cost": 1,
+      "energy_cost": 3,
       "type": "terrain",
-      "effect": "将目标地形调整为1级",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
+      "effect": "降低某个地块两级，跟随精灵施法范围，选中对象地块。效果（地形改变）",
+      "target_type": "tile",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
       "effects": [
         {
           "tag": "terrain_change",
-          "terrain_type": "normal",
-          "set_height": 1
+          "target_scope": "target_tile",
+          "height_delta": -2
         }
       ]
     },
     {
-      "id": "C20",
-      "name": "山峰形成",
-      "attributes": ["rock"],
+      "id": "FW01",
+      "name": "蒸汽冲击",
+      "attributes": ["fire", "water"],
       "energy_cost": 3,
-      "type": "terrain",
-      "effect": "将目标地形抬高至3级",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
+      "type": "attack",
+      "effect": "对目标精灵造成2点伤害，同时为自身回复1点生命值；跟随精灵施法范围，选中对象为敌方精灵。精灵距离：3。效果（单体伤害，恢复）",
+      "target_type": "enemy_sprite",
+      "range_requirement": "follow_caster",
+      "dual_attribute_range": 3,
+      "timing": "start_of_next_turn",
       "effects": [
         {
-          "tag": "terrain_change",
-          "terrain_type": "normal",
-          "set_height": 3
+          "tag": "damage",
+          "amount": 2,
+          "target_scope": "primary"
+        },
+        {
+          "tag": "heal",
+          "amount": 1,
+          "target_scope": "caster"
         }
       ]
     },
     {
-      "id": "C21",
-      "name": "深谷挖掘",
-      "attributes": ["rock"],
-      "energy_cost": 3,
-      "type": "terrain",
-      "effect": "将目标地形降低至1级",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
+      "id": "FF01",
+      "name": "热浪",
+      "attributes": ["fire", "wind"],
+      "energy_cost": 2,
+      "type": "attack",
+      "effect": "对半径为2范围内敌方精灵造成1点伤害并将其击退1格，选中对象为自身精灵。精灵距离：4。效果（范围伤害，击退）",
+      "target_type": "self",
+      "range_requirement": "self",
+      "dual_attribute_range": 4,
+      "timing": "start_of_next_turn",
       "effects": [
         {
-          "tag": "terrain_change",
-          "terrain_type": "normal",
-          "set_height": 1
+          "tag": "area_damage",
+          "center": "caster",
+          "radius": 2,
+          "damage": 1,
+          "affects": "enemies",
+          "knockback": {
+            "distance": 1,
+            "blocked_damage": 1
+          }
         }
       ]
     },
     {
-      "id": "C22",
-      "name": "水岩结合",
-      "attributes": ["water", "rock"],
+      "id": "FR01",
+      "name": "火山喷发",
+      "attributes": ["fire", "rock"],
       "energy_cost": 3,
-      "type": "terrain",
-      "effect": "在指定位置创建1格水流地形，同时将地形抬高1级（最高3级）",
-      "target_type": "adjacent_tile",
-      "range_requirement": "within_attack_range",
+      "type": "attack",
+      "effect": "抬高某个地块一级，对周半径一格范围内所有精灵造成1点伤害。选中对象为地块。效果（地形改变，范围伤害）",
+      "target_type": "tile",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
       "effects": [
         {
           "tag": "terrain_change",
-          "terrain_type": "water",
+          "target_scope": "target_tile",
           "height_delta": 1
+        },
+        {
+          "tag": "area_damage",
+          "center": "target_tile",
+          "radius": 1,
+          "damage": 1,
+          "affects": "all"
+        }
+      ]
+    },
+    {
+      "id": "WW01",
+      "name": "南面湿冷",
+      "attributes": ["water", "wind"],
+      "energy_cost": 3,
+      "type": "support",
+      "effect": "对半径2格的所有敌方精灵，获得易伤（所有来源伤害+1）持续两回合，选中对象地块。效果（范围，易伤减益）",
+      "target_type": "tile",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
+      "effects": [
+        {
+          "tag": "area_status",
+          "center": "target_tile",
+          "radius": 2,
+          "affects": "enemies",
+          "status": {
+            "status_id": "vulnerable",
+            "duration": 2,
+            "modifiers": {
+              "damage_taken_bonus": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "WR01",
+      "name": "地下喷泉",
+      "attributes": ["water", "rock"],
+      "energy_cost": 2,
+      "type": "terrain",
+      "effect": "抬高某个地块两级，并创建水流地形。选中对象为地块。效果（地形改变，创建水流地形）",
+      "target_type": "tile",
+      "range_requirement": "follow_caster",
+      "timing": "start_of_next_turn",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "target_scope": "target_tile",
+          "height_delta": 2,
+          "terrain_type": "water"
+        }
+      ]
+    },
+    {
+      "id": "AR01",
+      "name": "风蚀",
+      "attributes": ["wind", "rock"],
+      "energy_cost": 3,
+      "type": "attack",
+      "effect": "降低某个精灵所在地块一级，并根据精灵所在地块高度造成伤害——3级3点，2级2点，1级1点。选中对象为敌方精灵。效果（地形改变，单体伤害，动态倍率伤害）",
+      "target_type": "enemy_sprite",
+      "range_requirement": "follow_caster",
+      "dual_attribute_range": 3,
+      "timing": "start_of_next_turn",
+      "effects": [
+        {
+          "tag": "terrain_change",
+          "target_scope": "target_sprite_tile",
+          "height_delta": -1
+        },
+        {
+          "tag": "height_based_damage",
+          "mapping": {
+            "1": 1,
+            "2": 2,
+            "3": 3
+          },
+          "pending_height_delta": -1
         }
       ]
     }

@@ -135,13 +135,24 @@ func check_attribute_match(card: Card, sprites: Array[Sprite], allow_rent: bool 
 	
 	return result
 
+# 状态与延迟管理器引用
+var status_manager: StatusEffectManager
+var delayed_effect_manager: DelayedEffectManager
+
+func set_aux_managers(status_mgr: StatusEffectManager, delayed_mgr: DelayedEffectManager):
+	status_manager = status_mgr
+	delayed_effect_manager = delayed_mgr
+
 # 传递卡牌效果至目标精灵/地形
-func apply_card_effect(card: Card, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager) -> Dictionary:
+func apply_card_effect(card: Card, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager, all_sprites: Array[Sprite] = []) -> Dictionary:
 	var result = {
 		"success": false,
 		"effect_applied": false,
 		"message": ""
 	}
+	
+	if all_sprites == null:
+		all_sprites = []
 	
 	if card.effects.is_empty():
 		result.message = "卡牌未配置结构化效果"
@@ -149,7 +160,7 @@ func apply_card_effect(card: Card, source_sprite: Sprite, target: Variant, game_
 	
 	var messages: Array[String] = []
 	for effect in card.effects:
-		var effect_result = _apply_effect_by_tag(effect, card, source_sprite, target, game_map, terrain_manager)
+		var effect_result = _apply_effect_by_tag(effect, card, source_sprite, target, game_map, terrain_manager, all_sprites)
 		var error_message: String = effect_result.get("error", "")
 		if not error_message.is_empty():
 			result.message = error_message
@@ -166,10 +177,18 @@ func apply_card_effect(card: Card, source_sprite: Sprite, target: Variant, game_
 		result.message = "；".join(messages)
 	
 	return result
-
-func _apply_effect_by_tag(effect: Dictionary, card: Card, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager) -> Dictionary:
+	
+func _apply_effect_by_tag(effect: Dictionary, card: Card, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager, all_sprites: Array[Sprite]) -> Dictionary:
 	var tag: String = effect.get("tag", "")
 	match tag:
+		"damage", "area_damage":
+			return _effect_damage(effect, card, source_sprite, target, game_map, terrain_manager, all_sprites)
+		"persistent_area_damage", "damage_over_time_field":
+			return _effect_persistent_area_damage(effect, card, source_sprite, target, game_map, terrain_manager)
+		"status", "apply_status", "area_status":
+			return _effect_status(effect, card, source_sprite, target, all_sprites)
+		"height_based_damage":
+			return _effect_height_based_damage(effect, source_sprite, target, game_map)
 		"single_attack":
 			return _effect_single_attack(effect, source_sprite, target, game_map, terrain_manager)
 		"terrain_change":
@@ -177,12 +196,180 @@ func _apply_effect_by_tag(effect: Dictionary, card: Card, source_sprite: Sprite,
 		"terrain_extend_duration":
 			return _effect_terrain_extend_duration(effect, source_sprite, target, game_map)
 		"heal":
-			return _effect_heal(effect, source_sprite, target)
+			return _effect_heal(effect, source_sprite, target, all_sprites)
 		_:
 			return {
 				"success": false,
 				"error": "未知的卡牌效果标签: " + tag
 			}
+
+func _effect_damage(effect: Dictionary, card: Card, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager, all_sprites: Array[Sprite]) -> Dictionary:
+	var amount: int = effect.get("amount", 0)
+	var terrain_height_delta: int = effect.get("terrain_height_delta", 0)
+	var has_damage_component = amount != 0
+	if not has_damage_component and terrain_height_delta == 0:
+		return {"success": false, "message": ""}
+	var radius: int = effect.get("radius", 0)
+	var alignment: String = effect.get("affects", effect.get("target_alignment", "enemy"))
+	var center_mode: String = effect.get("center", "target_sprite")
+	var burn_forest: bool = effect.get("burn_forest", false)
+	var knockback_data = effect.get("knockback", {})
+	var owner_id = source_sprite.owner_player_id
+	var affected_hexes: Array[Vector2i] = []
+	var targets: Array[Sprite] = []
+	if radius > 0:
+		var center_coord = _resolve_center_coord(center_mode, source_sprite, target)
+		if center_coord == null:
+			return {"success": false, "error": "范围效果缺少中心坐标"}
+		affected_hexes = HexGrid.get_hexes_in_range(center_coord, radius)
+		targets = _collect_targets_in_radius(center_coord, radius, alignment, owner_id, all_sprites)
+	else:
+		if target is Sprite:
+			targets.append(target)
+			affected_hexes.append(target.hex_position)
+		elif alignment == "ally":
+			targets.append(source_sprite)
+			affected_hexes.append(source_sprite.hex_position)
+		else:
+			return {"success": false, "error": "伤害效果缺少有效目标"}
+	if burn_forest and affected_hexes.size() > 0:
+		_burn_tiles_in_hexes(affected_hexes, owner_id, game_map, terrain_manager)
+	var bonus_vs_terrain = effect.get("bonus_vs_terrain", [])
+	var messages: Array[String] = []
+	for sprite in targets:
+		var target_damage = amount
+		var terrain = game_map.get_terrain(sprite.hex_position)
+		for bonus_def in bonus_vs_terrain:
+			if typeof(bonus_def) != TYPE_DICTIONARY:
+				continue
+			var terrain_name: String = bonus_def.get("terrain", "")
+			var bonus_value: int = bonus_def.get("bonus", 0)
+			if terrain and _terrain_matches_string(terrain, terrain_name):
+				target_damage += bonus_value
+		if target_damage > 0:
+			sprite.take_damage(target_damage)
+			messages.append("对" + sprite.sprite_name + "造成" + str(target_damage) + "点伤害")
+		if terrain_height_delta != 0:
+			terrain_manager.request_terrain_change(
+				owner_id,
+				sprite.hex_position,
+				TerrainTile.TerrainType.NORMAL,
+				-1,
+				-1,
+				terrain_height_delta
+			)
+		if knockback_data and sprite != source_sprite:
+			_apply_knockback(source_sprite, sprite, knockback_data, game_map, all_sprites)
+	if messages.is_empty():
+		return {"success": true, "message": "范围内没有可攻击目标"}
+	return {"success": true, "message": "；".join(messages)}
+
+func _effect_persistent_area_damage(effect: Dictionary, card: Card, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager) -> Dictionary:
+	if not delayed_effect_manager:
+		return {"success": false, "error": "延迟效果系统未初始化"}
+	var center_coord = _resolve_center_coord(effect.get("center", "target_tile"), source_sprite, target)
+	if center_coord == null:
+		return {"success": false, "error": "持续效果缺少中心"}
+	var duration = effect.get("duration", effect.get("duration_turns", 0))
+	if duration <= 0:
+		return {"success": false, "error": "持续效果缺少持续时间"}
+	var alignment = effect.get("affects", effect.get("target_alignment", "enemy"))
+	var field_data = {
+		"center_coord": center_coord,
+		"radius": effect.get("radius", 0),
+		"damage": effect.get("damage", 0),
+		"duration_turns": duration,
+		"target_alignment": alignment,
+		"owner_player_id": source_sprite.owner_player_id
+	}
+	var expire_def = effect.get("on_expire")
+	if expire_def and typeof(expire_def) == TYPE_DICTIONARY:
+		var action = expire_def.duplicate(true)
+		if action.get("target", "") == "target_tile":
+			action["coord"] = center_coord
+		action["owner_player_id"] = source_sprite.owner_player_id
+		field_data["expire_actions"] = [action]
+	var final_terrain = effect.get("final_terrain")
+	if final_terrain and typeof(final_terrain) == TYPE_DICTIONARY:
+		var expire_action = {
+			"action": "terrain_change",
+			"coord": center_coord,
+			"terrain_type": final_terrain.get("terrain_type", "normal"),
+			"set_height": final_terrain.get("set_height", -1),
+			"height_delta": final_terrain.get("height_delta", 0),
+			"owner_player_id": source_sprite.owner_player_id
+		}
+		if not field_data.has("expire_actions"):
+			field_data["expire_actions"] = []
+		field_data["expire_actions"].append(expire_action)
+	delayed_effect_manager.register_field_effect(field_data)
+	return {"success": true, "message": card.card_name + "将在" + str(duration) + "回合内持续生效"}
+
+func _effect_status(effect: Dictionary, card: Card, source_sprite: Sprite, target: Variant, all_sprites: Array[Sprite]) -> Dictionary:
+	if not status_manager:
+		return {"success": false, "error": "状态系统未初始化"}
+	var radius: int = effect.get("radius", 0)
+	var alignment: String = effect.get("affects", effect.get("target_alignment", "ally"))
+	var targets: Array[Sprite] = []
+	if radius > 0:
+		var center_coord = _resolve_center_coord(effect.get("center", "target_tile"), source_sprite, target)
+		if center_coord == null:
+			return {"success": false, "error": "状态效果缺少中心"}
+		targets = _collect_targets_in_radius(center_coord, radius, alignment, source_sprite.owner_player_id, all_sprites)
+	else:
+		var scope = effect.get("target_scope", "target")
+		match scope:
+			"self", "caster":
+				targets.append(source_sprite)
+			"target", "primary":
+				var resolved = _resolve_sprite_target(target)
+				if resolved:
+					targets.append(resolved)
+				else:
+					targets.append(source_sprite)
+			_:
+				var resolved_default = _resolve_sprite_target(target)
+				targets.append(resolved_default if resolved_default else source_sprite)
+	if targets.is_empty():
+		return {"success": true, "message": "范围内没有可用目标"}
+	var status_payload: Dictionary
+	if effect.has("status"):
+		status_payload = effect.get("status").duplicate(true)
+	else:
+		status_payload = {
+			"status_id": effect.get("status_id", effect.get("status_type", "")),
+			"duration": effect.get("duration", effect.get("duration_turns", 0)),
+			"modifiers": effect.get("modifiers", {}),
+			"magnitude": effect.get("magnitude", effect.get("amount", 0)),
+			"max_stack": effect.get("max_stack", -1)
+		}
+	if status_payload.get("status_id", "").is_empty():
+		return {"success": false, "error": "状态缺少标识"}
+	status_payload["source_player_id"] = source_sprite.owner_player_id
+	for sprite in targets:
+		status_manager.apply_status(sprite, status_payload)
+	return {"success": true, "message": "状态" + status_payload.get("status_id", "") + "已应用"}
+
+func _effect_height_based_damage(effect: Dictionary, source_sprite: Sprite, target: Variant, game_map: GameMap) -> Dictionary:
+	var target_sprite = _resolve_sprite_target(target)
+	if not target_sprite:
+		return {"success": false, "error": "需要精灵目标"}
+	var terrain = game_map.get_terrain(target_sprite.hex_position)
+	if not terrain:
+		return {"success": false, "message": ""}
+	var mapping: Dictionary = effect.get("mapping", {})
+	var pending_delta: int = effect.get("pending_height_delta", 0)
+	var use_post_change: bool = effect.get("use_post_change_height", false)
+	var effective_height = terrain.height_level
+	if use_post_change:
+		effective_height += pending_delta
+	effective_height = clamp(effective_height, 0, 10)
+	var key = str(effective_height)
+	var damage: int = mapping.get(key, 0)
+	if damage <= 0:
+		return {"success": true, "message": "没有造成伤害"}
+	target_sprite.take_damage(damage)
+	return {"success": true, "message": "根据高度造成" + str(damage) + "点伤害"}
 
 func _effect_single_attack(effect: Dictionary, source_sprite: Sprite, target: Variant, game_map: GameMap, terrain_manager: TerrainManager) -> Dictionary:
 	if not (target is Sprite):
@@ -293,25 +480,128 @@ func _effect_terrain_extend_duration(effect: Dictionary, source_sprite: Sprite, 
 	
 	return {"success": false, "message": ""}
 
-func _effect_heal(effect: Dictionary, source_sprite: Sprite, target: Variant) -> Dictionary:
-	var heal_target: Sprite = null
-	var target_scope: String = effect.get("target", "self")
-	if target_scope == "self":
-		heal_target = source_sprite
-	elif target_scope == "target" and target is Sprite:
-		heal_target = target
-	
-	if heal_target == null:
-		return {"success": false, "error": "治疗效果缺少有效目标"}
-	
+func _effect_heal(effect: Dictionary, source_sprite: Sprite, target: Variant, all_sprites: Array[Sprite]) -> Dictionary:
 	var amount: int = effect.get("amount", 0)
-	if amount > 0:
-		heal_target.heal(amount)
-	
-	return {
-		"success": true,
-		"message": heal_target.sprite_name + "恢复了" + str(amount) + "点生命"
-	}
+	if amount <= 0:
+		return {"success": false, "message": ""}
+	var radius: int = effect.get("radius", 0)
+	var alignment: String = effect.get("target_alignment", "ally")
+	var targets: Array[Sprite] = []
+	if radius > 0:
+		var center = _resolve_center_coord(effect.get("center", "target"), source_sprite, target)
+		if center == null:
+			center = source_sprite.hex_position
+		targets = _collect_targets_in_radius(center, radius, alignment, source_sprite.owner_player_id, all_sprites)
+	else:
+		var scope = effect.get("target", "target")
+		if scope == "self":
+			targets.append(source_sprite)
+		elif scope == "target" and target is Sprite:
+			targets.append(target)
+		else:
+			targets.append(source_sprite)
+	if targets.is_empty():
+		return {"success": true, "message": "没有可治疗目标"}
+	for sprite in targets:
+		sprite.heal(amount)
+	return {"success": true, "message": "恢复" + str(amount) + "点生命"}
+
+func _resolve_sprite_target(target: Variant) -> Sprite:
+	if target is Sprite:
+		return target
+	return null
+
+func _collect_targets_in_radius(center: Vector2i, radius: int, alignment: String, owner_id: int, all_sprites: Array[Sprite]) -> Array[Sprite]:
+	var results: Array[Sprite] = []
+	if center == null:
+		return results
+	var affected_hexes = HexGrid.get_hexes_in_range(center, radius)
+	for sprite in all_sprites:
+		if not sprite or not sprite.is_alive:
+			continue
+		if sprite.hex_position not in affected_hexes:
+			continue
+		if not _matches_alignment(sprite, owner_id, alignment):
+			continue
+		results.append(sprite)
+	return results
+
+func _resolve_center_coord(center_mode: String, source_sprite: Sprite, target: Variant) -> Variant:
+	match center_mode:
+		"source", "caster", "self":
+			return source_sprite.hex_position
+		"target_sprite":
+			var sprite = _resolve_sprite_target(target)
+			return sprite.hex_position if sprite else null
+		"target_tile", "target":
+			return _resolve_hex_coord(target)
+		_:
+			return _resolve_hex_coord(target)
+
+func _matches_alignment(sprite: Sprite, owner_id: int, alignment: String) -> bool:
+	match alignment:
+		"ally", "allies":
+			return owner_id >= 0 and sprite.owner_player_id == owner_id
+		"enemy", "enemies":
+			return owner_id >= 0 and sprite.owner_player_id != owner_id
+		"self":
+			return sprite.owner_player_id == owner_id
+		_:
+			return true
+
+func _burn_tiles_in_hexes(hexes: Array[Vector2i], owner_id: int, game_map: GameMap, terrain_manager: TerrainManager):
+	for hex in hexes:
+		var terrain = game_map.get_terrain(hex)
+		if not terrain:
+			continue
+		if terrain.terrain_type != TerrainTile.TerrainType.FOREST or terrain.is_burned:
+			continue
+		terrain_manager.request_terrain_change(owner_id, hex, TerrainTile.TerrainType.SCORCHED, terrain.height_level, -1, 0, false)
+
+func _apply_knockback(source_sprite: Sprite, target_sprite: Sprite, knockback_data: Dictionary, game_map: GameMap, all_sprites: Array[Sprite]):
+	var distance: int = max(1, knockback_data.get("distance", 1))
+	var direction = _get_knockback_direction(source_sprite.hex_position, target_sprite.hex_position)
+	if direction == Vector2i.ZERO:
+		return
+	var destination = target_sprite.hex_position
+	for i in range(distance):
+		destination += direction
+	var origin_terrain = game_map.get_terrain(target_sprite.hex_position)
+	var dest_terrain = game_map.get_terrain(destination)
+	var block_damage: int = knockback_data.get("blocked_damage", knockback_data.get("block_damage", 0))
+	if dest_terrain == null:
+		_apply_knockback_block_damage(target_sprite, block_damage)
+		return
+	var origin_height = origin_terrain.height_level if origin_terrain else 1
+	if dest_terrain.height_level > origin_height or _is_tile_occupied(destination, all_sprites):
+		_apply_knockback_block_damage(target_sprite, block_damage)
+		return
+	target_sprite.move_to(destination)
+
+func _apply_knockback_block_damage(sprite: Sprite, damage: int):
+	if damage > 0:
+		sprite.take_damage(damage)
+
+func _get_knockback_direction(source_coord: Vector2i, target_coord: Vector2i) -> Vector2i:
+	if source_coord == target_coord:
+		return Vector2i.ZERO
+	var best_dir = Vector2i.ZERO
+	var best_distance = -INF
+	for dir in HexGrid.HEX_DIRECTIONS:
+		var candidate = target_coord + dir
+		var distance = HexGrid.hex_distance(candidate, source_coord)
+		if distance > best_distance:
+			best_distance = distance
+			best_dir = dir
+	return best_dir
+
+func _is_tile_occupied(hex_coord: Vector2i, all_sprites: Array[Sprite]) -> bool:
+	for sprite in all_sprites:
+		if not sprite or not sprite.is_alive:
+			continue
+		if sprite.hex_position == hex_coord:
+			return true
+	return false
 
 func _resolve_hex_coord(target: Variant) -> Variant:
 	if target is Vector2i:
@@ -362,7 +652,12 @@ func get_attackable_targets(card: Card, source_sprite: Sprite, all_sprites: Arra
 	
 	# 首先检查卡牌效果描述中是否有特殊范围描述
 	var special_range = _parse_special_range_from_effect(card.effect_description)
-	if special_range > 0:
+	if card.range_override > 0:
+		attack_range = card.range_override
+		var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
+		attackable_positions = range_hexes
+		print("攻击范围计算（自定义覆盖）: 精灵位置=", source_sprite.hex_position, " 范围=", attack_range, " 可攻击位置数=", range_hexes.size())
+	elif special_range > 0:
 		# 卡牌有特殊范围描述，优先使用
 		attack_range = special_range
 		var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
@@ -371,20 +666,28 @@ func get_attackable_targets(card: Card, source_sprite: Sprite, all_sprites: Arra
 	else:
 		# 没有特殊范围描述，根据range_requirement判断
 		match card.range_requirement:
-			"within_attack_range":
-				# 使用精灵的施法范围（默认）
+			"within_attack_range", "follow_caster":
 				attack_range = source_sprite.cast_range
 				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
 				attackable_positions = range_hexes
 				print("攻击范围计算（精灵施法范围）: 精灵位置=", source_sprite.hex_position, " 施法范围=", attack_range, " 可攻击位置数=", range_hexes.size())
 			"line_2_tiles":
-				# 直线2格内（需要特殊处理，这里简化）
 				attack_range = 2
 				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
 				attackable_positions = range_hexes
 				print("攻击范围计算: 直线2格，可攻击位置数=", range_hexes.size())
+			"range_3":
+				attack_range = 3
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
+				attackable_positions = range_hexes
+			"range_4":
+				attack_range = 4
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
+				attackable_positions = range_hexes
+			"self":
+				attack_range = 0
+				attackable_positions = [source_sprite.hex_position]
 			_:
-				# 默认使用精灵施法范围
 				attack_range = source_sprite.cast_range
 				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, attack_range)
 				attackable_positions = range_hexes
@@ -423,6 +726,12 @@ func get_terrain_placement_positions(card: Card, source_sprite: Sprite, game_map
 			if game_map.is_valid_hex_with_terrain(neighbor):
 				positions.append(neighbor)
 		print("地形放置范围（卡牌特殊描述：相邻）: 相邻1格")
+	elif card.range_override > 0:
+		var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, card.range_override)
+		for hex in range_hexes:
+			if game_map.is_valid_hex_with_terrain(hex):
+				positions.append(hex)
+		print("地形放置范围（自定义覆盖）: ", card.range_override, "格")
 	elif special_range > 0:
 		# 卡牌有特殊范围描述，使用该范围
 		var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, special_range)
@@ -455,6 +764,24 @@ func get_terrain_placement_positions(card: Card, source_sprite: Sprite, game_map
 					if HexGrid.is_adjacent(hex, source_sprite.hex_position):
 						if game_map.is_valid_hex_with_terrain(hex):
 							positions.append(hex)
+			"within_attack_range", "follow_caster":
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, source_sprite.cast_range)
+				for hex in range_hexes:
+					if game_map.is_valid_hex_with_terrain(hex):
+						positions.append(hex)
+			"range_3":
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, 3)
+				for hex in range_hexes:
+					if game_map.is_valid_hex_with_terrain(hex):
+						positions.append(hex)
+			"range_4":
+				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, 4)
+				for hex in range_hexes:
+					if game_map.is_valid_hex_with_terrain(hex):
+						positions.append(hex)
+			"self":
+				if game_map.is_valid_hex_with_terrain(source_sprite.hex_position):
+					positions.append(source_sprite.hex_position)
 			_:
 				# 默认使用精灵施法范围
 				var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, source_sprite.cast_range)

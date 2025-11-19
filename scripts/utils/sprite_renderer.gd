@@ -12,6 +12,7 @@ var game_map: GameMap  # 地图引用，用于获取地图参数
 var fog_of_war_manager: FogOfWarManager = null
 var current_player_id: int = -1
 var all_sprites: Array[Sprite] = []  # 所有精灵列表（用于可见性检查）
+var fog_enabled: bool = true
 
 # 分散站位系统
 var sprite_hex_indices: Dictionary = {}  # key: sprite实例, value: 在该六边形内的索引（用于计算偏移）
@@ -281,6 +282,10 @@ func set_fog_manager(manager: FogOfWarManager, player_id: int):
 	# 更新所有精灵的可见性
 	_update_all_sprites_fog_visibility()
 
+func set_fog_enabled(enabled: bool):
+	fog_enabled = enabled
+	_update_all_sprites_fog_visibility()
+
 # 视野更新处理
 func _on_vision_updated(_player_id: int):
 	# 只更新当前玩家的视野显示
@@ -297,13 +302,15 @@ func _update_sprite_fog_visibility(sprite: Sprite):
 	if not sprite_nodes.has(sprite):
 		return
 	
-	if not fog_of_war_manager or current_player_id < 0:
-		# 没有迷雾系统，显示所有精灵
-		var mesh_instance = sprite_nodes[sprite]
+	var mesh_instance = sprite_nodes[sprite]
+	if not fog_enabled:
 		mesh_instance.visible = true
 		return
 	
-	var mesh_instance = sprite_nodes[sprite]
+	if not fog_of_war_manager or current_player_id < 0:
+		# 没有迷雾系统，显示所有精灵
+		mesh_instance.visible = true
+		return
 	
 	# 检查精灵位置是否对当前玩家可见
 	# 己方精灵始终可见，敌方精灵只有在视野内才可见
@@ -385,6 +392,11 @@ func update_all_sprite_positions():
 	for sprite in sprite_nodes.keys():
 		if sprite.is_alive:
 			_update_sprite_position(sprite)
+
+func get_sprite_node(sprite: Sprite) -> MeshInstance3D:
+	if sprite_nodes.has(sprite):
+		return sprite_nodes[sprite]
+	return null
 
 # 更新所有精灵的布局（重新计算每个位置的精灵索引）
 func _update_all_sprites_layout():

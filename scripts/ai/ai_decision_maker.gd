@@ -36,7 +36,7 @@ func make_decisions() -> Array[ActionResolver.Action]:
 	# 简化版AI逻辑：优先移动至资源点/赏金区域，仅使用单属性卡牌
 	
 	# 1. 优先处理赏金
-	if contest_point_manager.bounty_status == ContestPointManager.BountyStatus.GENERATED:
+	if contest_point_manager.bounty_status != ContestPointManager.BountyStatus.HELD:
 		actions.append_array(_try_acquire_bounty())
 	
 	# 2. 处理公共争夺点
@@ -54,22 +54,26 @@ func make_decisions() -> Array[ActionResolver.Action]:
 func _try_acquire_bounty() -> Array[ActionResolver.Action]:
 	var actions: Array[ActionResolver.Action] = []
 	
-	if contest_point_manager.bounty_status != ContestPointManager.BountyStatus.GENERATED:
-		return actions
-	
-	# 找到最近的精灵，移动到赏金区域
-	var bounty_zone = game_map.bounty_zone_tiles
-	if bounty_zone.is_empty():
-		return actions
-	
-	var target_pos = bounty_zone[0]  # 使用第一个坐标作为目标
+	var target_pos = contest_point_manager.get_active_bounty_hex()
+	var status = contest_point_manager.bounty_status
+	if status != ContestPointManager.BountyStatus.GENERATED and status != ContestPointManager.BountyStatus.DROPPED:
+		var bounty_zone = game_map.bounty_zone_tiles
+		if bounty_zone.is_empty():
+			return actions
+		target_pos = bounty_zone[0]
+	else:
+		if target_pos == Vector2i(-1, -1):
+			return actions
 	
 	for sprite in sprites:
 		if not sprite.is_alive:
 			continue
 		
-		# 如果已经在赏金区域内，不需要移动
-		if game_map.is_in_bounty_zone(sprite.hex_position):
+		# 如果已经在赏金位置或区域内，不需要移动
+		if status == ContestPointManager.BountyStatus.GENERATED or status == ContestPointManager.BountyStatus.DROPPED:
+			if sprite.hex_position == target_pos:
+				continue
+		elif game_map.is_in_bounty_zone(sprite.hex_position):
 			continue
 		
 		# 尝试移动到赏金区域

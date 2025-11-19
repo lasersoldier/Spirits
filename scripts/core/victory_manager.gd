@@ -38,17 +38,13 @@ func check_victory_condition(_sprites: Array[Sprite]) -> bool:
 	if not bounty_holder or not bounty_holder.is_alive:
 		return false
 	
-	# 检查是否在任意起始点（撤离点）
+	# 检查是否进入任意玩家部署区域
 	var holder_pos = bounty_holder.hex_position
-	
-	# 检查是否在任意玩家的起始点
-	for spawn in game_map.spawn_points:
-		if not spawn is Dictionary:
-			continue
-		var hex_coord = spawn.get("hex_coord", {})
-		if hex_coord is Dictionary:
-			var spawn_coord = Vector2i(hex_coord.get("q", 0), hex_coord.get("r", 0))
-			if holder_pos == spawn_coord:
+	var spawn_lookup = game_map.spawn_points_by_player if game_map else {}
+	for player_id in spawn_lookup.keys():
+		var deploy_positions = game_map.get_deploy_positions(int(player_id))
+		for deploy_pos in deploy_positions:
+			if holder_pos == deploy_pos:
 				declare_victory(bounty_holder.owner_player_id)
 				return true
 	
