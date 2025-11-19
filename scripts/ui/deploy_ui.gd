@@ -5,7 +5,6 @@ extends Control
 var sprite_selection_panel: Panel
 var selected_sprites_container: HBoxContainer
 var confirm_button: Button
-var cancel_button: Button
 var instruction_label: Label
 
 # 选中的精灵ID列表（最多3个）
@@ -136,12 +135,6 @@ func _create_ui():
 	confirm_button.pressed.connect(_on_confirm_button_pressed)
 	button_container.add_child(confirm_button)
 	
-	cancel_button = Button.new()
-	cancel_button.text = "取消"
-	UIScaleManager.apply_scale_to_button(cancel_button, 18)
-	cancel_button.pressed.connect(_on_cancel)
-	button_container.add_child(cancel_button)
-
 func _on_sprite_selected(sprite_id: String, _sprite_card: Panel):
 	if current_state != DeployState.SELECTING_SPRITES:
 		return
@@ -223,6 +216,12 @@ func _highlight_deploy_positions():
 	var deploy_positions = game_map.get_deploy_positions(0)
 	print("可部署位置: ", deploy_positions)
 	
+	# 显示所有玩家的部署位置（用于调试）
+	if game_manager:
+		for player_id in range(GameManager.PLAYER_COUNT):
+			var player_deploy_positions = game_map.get_deploy_positions(player_id)
+			print("玩家", player_id, "部署位置（共", player_deploy_positions.size(), "个）: ", player_deploy_positions)
+	
 	# 在地图上高亮显示这些位置
 	if not terrain_renderer and game_manager:
 		# 从game_manager获取terrain_renderer
@@ -234,13 +233,6 @@ func _highlight_deploy_positions():
 	else:
 		print("警告: 无法找到地形渲染器，无法显示高亮")
 
-func _on_cancel():
-	# 清除高亮
-	if terrain_renderer:
-		terrain_renderer.clear_highlights()
-	deployment_cancelled.emit()
-	queue_free()
-
 # 处理地图点击（由外部调用）
 func handle_map_click(hex_coord: Vector2i):
 	if current_state != DeployState.SELECTING_POSITIONS:
@@ -251,8 +243,9 @@ func handle_map_click(hex_coord: Vector2i):
 	
 	# 检查是否是有效的部署位置
 	var deploy_positions = game_map.get_deploy_positions(0)
+	print("点击坐标: ", hex_coord, " 玩家0可部署位置: ", deploy_positions)
 	if hex_coord not in deploy_positions:
-		print("无效的部署位置")
+		print("无效的部署位置: ", hex_coord)
 		return
 	
 	# 检查是否已经选择过这个位置（如果已选择，则取消选择）

@@ -393,7 +393,7 @@ func get_deploy_positions(player_id: int) -> Array[Vector2i]:
 			if hex_coord is Dictionary:
 				positions.append(Vector2i(hex_coord.get("q", 0), hex_coord.get("r", 0)))
 	
-	print("玩家", player_id, "部署位置（共", positions.size(), "个）: ", positions)
+
 	return positions
 
 # 坐标转字符串key
@@ -433,8 +433,10 @@ func _create_path(path_config: Dictionary) -> void:
 func _paint_hex_area(center: Vector2i, radius: int, terrain_type: TerrainTile.TerrainType, height: int) -> void:
 	var tiles = HexGrid.get_hexes_in_range(center, radius)
 	for coord in tiles:
-		var terrain = TerrainTile.new(coord, terrain_type, height)
-		_set_terrain(coord, terrain)
+		# 检查坐标是否在地图边界内
+		if coord.x >= 0 and coord.x < map_width and coord.y >= 0 and coord.y < map_height:
+			var terrain = TerrainTile.new(coord, terrain_type, height)
+			_set_terrain(coord, terrain)
 
 func _terrain_type_from_string(type_name: String) -> TerrainTile.TerrainType:
 	match type_name.to_lower():

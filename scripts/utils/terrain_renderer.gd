@@ -57,7 +57,6 @@ func _render_all_terrain():
 
 func _render_terrain_tile(hex_coord: Vector2i, terrain: TerrainTile):
 	var key = _coord_to_key(hex_coord)
-	print("TerrainRenderer: 渲染地形 - 坐标: ", hex_coord, " 类型: ", TerrainTile.TerrainType.keys()[terrain.terrain_type], " 高度: ", terrain.height_level)
 	
 	# 如果已存在，先移除
 	if terrain_nodes.has(key):
@@ -86,7 +85,6 @@ func _render_terrain_tile(hex_coord: Vector2i, terrain: TerrainTile):
 	world_pos.y = 0.0
 	mesh_instance.position = world_pos
 	
-	print("TerrainRenderer: 地形节点位置: ", world_pos, " 网格高度: ", height)
 	
 	add_child(mesh_instance)
 	terrain_nodes[key] = mesh_instance

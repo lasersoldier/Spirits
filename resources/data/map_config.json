@@ -9,7 +9,7 @@
       "name": "player_0",
       "type": "player",
       "player_id": 0,
-      "center": {"q": 24, "r": 38},
+      "center": {"q": 24, "r": 44},
       "radius": 4,
       "terrain_type": "normal",
       "height": 1
@@ -18,7 +18,7 @@
       "name": "player_1",
       "type": "player",
       "player_id": 1,
-      "center": {"q": 38, "r": 24},
+      "center": {"q": 44, "r": 24},
       "radius": 4,
       "terrain_type": "normal",
       "height": 1
@@ -27,7 +27,7 @@
       "name": "player_2",
       "type": "player",
       "player_id": 2,
-      "center": {"q": 24, "r": 10},
+      "center": {"q": 24, "r": 4},
       "radius": 4,
       "terrain_type": "normal",
       "height": 1
@@ -36,7 +36,7 @@
       "name": "player_3",
       "type": "player",
       "player_id": 3,
-      "center": {"q": 10, "r": 24},
+      "center": {"q": 4, "r": 24},
       "radius": 4,
       "terrain_type": "normal",
       "height": 1
@@ -51,13 +51,12 @@
     }
   ],
   "paths": [
-    {"from": {"q": 24, "r": 38}, "to": {"q": 24, "r": 24}, "width": 2},
-    {"from": {"q": 38, "r": 24}, "to": {"q": 24, "r": 24}, "width": 2},
-    {"from": {"q": 24, "r": 10}, "to": {"q": 24, "r": 24}, "width": 2},
-    {"from": {"q": 10, "r": 24}, "to": {"q": 24, "r": 24}, "width": 2},
-    {"from": {"q": 24, "r": 38}, "to": {"q": 38, "r": 24}, "width": 2},
-
-    {"from": {"q": 24, "r": 10}, "to": {"q": 10, "r": 24}, "width": 2}
+    {"from": {"q": 24, "r": 44}, "to": {"q": 24, "r": 24}, "width": 2},
+    {"from": {"q": 44, "r": 24}, "to": {"q": 24, "r": 24}, "width": 2},
+    {"from": {"q": 24, "r": 4}, "to": {"q": 24, "r": 24}, "width": 2},
+    {"from": {"q": 4, "r": 24}, "to": {"q": 24, "r": 24}, "width": 2},
+    {"from": {"q": 24, "r": 44}, "to": {"q": 44, "r": 24}, "width": 2},
+    {"from": {"q": 24, "r": 4}, "to": {"q": 4, "r": 24}, "width": 2}
   ],
   "resource_points": [
     {"type": "build", "hex_coord": {"q": 24, "r": 34}},
@@ -68,38 +67,62 @@
   "spawn_points": [
     {
       "player_id": 0,
-      "hex_coord": {"q": 24, "r": 37},
+      "hex_coord": {"q": 24, "r": 43},
       "deploy_positions": [
-        {"q": 23, "r": 37},
-        {"q": 24, "r": 36},
-        {"q": 25, "r": 37}
+        {"q": 24, "r": 47},
+        {"q": 25, "r": 46},
+        {"q": 26, "r": 45},
+        {"q": 27, "r": 44},
+        {"q": 28, "r": 43},
+        {"q": 28, "r": 44},
+        {"q": 27, "r": 45},
+        {"q": 26, "r": 46},
+        {"q": 25, "r": 47}
       ]
     },
     {
       "player_id": 1,
-      "hex_coord": {"q": 37, "r": 24},
+      "hex_coord": {"q": 44, "r": 23},
       "deploy_positions": [
-        {"q": 36, "r": 24},
-        {"q": 37, "r": 23},
-        {"q": 37, "r": 25}
+        {"q": 44, "r": 27},
+        {"q": 45, "r": 26},
+        {"q": 46, "r": 25},
+        {"q": 47, "r": 24},
+        {"q": 47, "r": 23},
+        {"q": 47, "r": 22},
+        {"q": 47, "r": 25},
+        {"q": 46, "r": 26},
+        {"q": 45, "r": 27}
       ]
     },
     {
       "player_id": 2,
-      "hex_coord": {"q": 24, "r": 11},
+      "hex_coord": {"q": 24, "r": 3},
       "deploy_positions": [
-        {"q": 23, "r": 11},
-        {"q": 24, "r": 12},
-        {"q": 25, "r": 11}
+        {"q": 24, "r": 7},
+        {"q": 25, "r": 6},
+        {"q": 26, "r": 5},
+        {"q": 27, "r": 4},
+        {"q": 28, "r": 3},
+        {"q": 28, "r": 4},
+        {"q": 27, "r": 5},
+        {"q": 26, "r": 6},
+        {"q": 25, "r": 7}
       ]
     },
     {
       "player_id": 3,
-      "hex_coord": {"q": 11, "r": 24},
+      "hex_coord": {"q": 4, "r": 23},
       "deploy_positions": [
-        {"q": 11, "r": 23},
-        {"q": 12, "r": 24},
-        {"q": 11, "r": 25}
+        {"q": 4, "r": 27},
+        {"q": 5, "r": 26},
+        {"q": 6, "r": 25},
+        {"q": 7, "r": 24},
+        {"q": 8, "r": 23},
+        {"q": 8, "r": 24},
+        {"q": 7, "r": 25},
+        {"q": 6, "r": 26},
+        {"q": 5, "r": 27}
       ]
     }
   ],

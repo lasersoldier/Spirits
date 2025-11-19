@@ -8,7 +8,7 @@ var player_energy: Dictionary = {}
 const MAX_ENERGY: int = 5
 
 # 初始能量
-const INITIAL_ENERGY: int = 0
+const INITIAL_ENERGY: int = 1
 
 signal energy_changed(player_id: int, old_energy: int, new_energy: int)
 signal energy_maxed(player_id: int)

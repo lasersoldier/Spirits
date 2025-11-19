@@ -359,8 +359,22 @@ func _on_hex_clicked(hex_coord: Vector2i):
 func _on_deployment_complete(selected_ids: Array[String], positions: Array[Vector2i]):
 	if game_manager:
 		game_manager.deploy_human_player(selected_ids, positions)
-		# 部署完成后，部署AI玩家并开始游戏
+		# 部署完成后，部署AI玩家
 		game_manager.deploy_ai_players()
+		
+		# 显示部署结果界面
+		_show_deployment_result()
+
+func _show_deployment_result():
+	# 创建部署结果界面
+	var result_ui = DeploymentResultUI.new()
+	result_ui.game_manager = game_manager
+	result_ui.continue_pressed.connect(_on_deployment_result_continue)
+	add_child(result_ui)
+
+func _on_deployment_result_continue():
+	# 继续游戏，开始游戏阶段
+	if game_manager:
 		game_manager.start_playing_phase()
 
 func _on_deployment_cancelled():

@@ -290,6 +290,11 @@ func start_round():
 
 # 初始化回合
 func _initialize_round():
+	# 每回合为所有玩家自动增长1点能量
+	if energy_manager:
+		for player_id in range(PLAYER_COUNT):
+			energy_manager.add_energy(player_id, 1)
+	
 	# 重置所有精灵的行动计数
 	sprite_action_counts.clear()
 	
