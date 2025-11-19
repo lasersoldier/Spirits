@@ -5,7 +5,8 @@ enum TerrainType {
 	NORMAL,    # 普通地形
 	FOREST,    # 森林地形
 	WATER,     # 水流地形
-	ROCK       # 岩石地形
+	BEDROCK,   # 基岩地形（不可修改）
+	SCORCHED   # 焦土地形
 }
 
 # 地形类型
@@ -23,13 +24,16 @@ var effect_duration: int = -1
 # 地形是否被焚毁（仅森林地形）
 var is_burned: bool = false
 
+# 是否是水源（通过卡牌创建的水流地形，即使高度降到1也保持为水源）
+var is_water_source: bool = false
+
 func _init(coord: Vector2i, type: TerrainType = TerrainType.NORMAL, level: int = 1):
 	hex_coord = coord
 	terrain_type = type
 	height_level = level
 	
-	# 岩石地形默认3级
-	if type == TerrainType.ROCK:
+	# 基岩地形默认3级
+	if type == TerrainType.BEDROCK:
 		height_level = 3
 
 # 获取地形是否具有隐藏效果（森林）
@@ -48,7 +52,7 @@ func can_be_burned() -> bool:
 func burn():
 	if can_be_burned():
 		is_burned = true
-		terrain_type = TerrainType.NORMAL
+		terrain_type = TerrainType.SCORCHED
 
 # 修改地形高度（仅岩属性可调用）
 func modify_height(new_level: int):
@@ -75,8 +79,14 @@ func get_terrain_name() -> String:
 			return "森林"
 		TerrainType.WATER:
 			return "水流"
-		TerrainType.ROCK:
-			return "岩石"
+		TerrainType.BEDROCK:
+			return "基岩"
+		TerrainType.SCORCHED:
+			return "焦土"
 		_:
 			return "未知"
+
+# 检查地形是否可以被修改（基岩不可修改）
+func can_be_modified() -> bool:
+	return terrain_type != TerrainType.BEDROCK
 

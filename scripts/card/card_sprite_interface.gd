@@ -325,10 +325,12 @@ func _terrain_type_from_string(type_name: String) -> TerrainTile.TerrainType:
 	match lowered:
 		"water":
 			return TerrainTile.TerrainType.WATER
-		"rock":
-			return TerrainTile.TerrainType.ROCK
+		"rock", "bedrock":
+			return TerrainTile.TerrainType.BEDROCK
 		"forest":
 			return TerrainTile.TerrainType.FOREST
+		"scorched":
+			return TerrainTile.TerrainType.SCORCHED
 		_:
 			return TerrainTile.TerrainType.NORMAL
 
@@ -336,10 +338,12 @@ func _terrain_type_to_text(terrain_type: TerrainTile.TerrainType) -> String:
 	match terrain_type:
 		TerrainTile.TerrainType.WATER:
 			return "水流"
-		TerrainTile.TerrainType.ROCK:
-			return "岩石"
+		TerrainTile.TerrainType.BEDROCK:
+			return "基岩"
 		TerrainTile.TerrainType.FOREST:
 			return "森林"
+		TerrainTile.TerrainType.SCORCHED:
+			return "焦土"
 		_:
 			return "普通"
 

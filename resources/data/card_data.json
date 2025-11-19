@@ -57,7 +57,7 @@
       "attributes": ["rock"],
       "energy_cost": 1,
       "type": "attack",
-      "effect": "对目标精灵造成2点伤害，若目标处于岩石地形，伤害+1",
+      "effect": "对目标精灵造成2点伤害，若目标处于基岩地形，伤害+1",
       "target_type": "enemy_sprite",
       "range_requirement": "within_attack_range",
       "effects": [
@@ -65,7 +65,7 @@
           "tag": "single_attack",
           "damage": 2,
           "bonus_vs_terrain": [
-            { "terrain": "rock", "bonus": 1 }
+            { "terrain": "bedrock", "bonus": 1 }
           ]
         }
       ]
@@ -150,23 +150,6 @@
           "tag": "single_attack",
           "damage": 2,
           "terrain_height_delta": -1
-        }
-      ]
-    },
-    {
-      "id": "C10",
-      "name": "水岩壁",
-      "attributes": ["water", "rock"],
-      "energy_cost": 2,
-      "type": "terrain",
-      "effect": "在自身精灵相邻1格创建1格3级岩石地形",
-      "target_type": "adjacent_tile",
-      "range_requirement": "adjacent",
-      "effects": [
-        {
-          "tag": "terrain_change",
-          "terrain_type": "rock",
-          "set_height": 3
         }
       ]
     },

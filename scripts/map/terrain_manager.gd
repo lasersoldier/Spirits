@@ -9,14 +9,16 @@ class TerrainChangeRequest:
 	var new_level: int  # 绝对高度值（-1表示不设置）
 	var height_delta: int  # 相对高度修改值（+1表示抬高1级，-2表示降低2级，0表示不修改高度）
 	var duration: int
+	var is_card_created: bool  # 是否通过卡牌创建（用于标记水源）
 	
-	func _init(p_id: int, coord: Vector2i, type: TerrainTile.TerrainType, level: int, dur: int, delta: int = 0):
+	func _init(p_id: int, coord: Vector2i, type: TerrainTile.TerrainType, level: int, dur: int, delta: int = 0, is_card: bool = true):
 		player_id = p_id
 		hex_coord = coord
 		new_type = type
 		new_level = level
 		height_delta = delta
 		duration = dur
+		is_card_created = is_card
 
 # 本回合的地形变化请求列表
 var terrain_change_requests: Array[TerrainChangeRequest] = []
@@ -28,8 +30,20 @@ func _init(map: GameMap):
 	game_map = map
 
 # 添加地形变化请求
-func request_terrain_change(player_id: int, hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_level: int = -1, duration: int = -1, height_delta: int = 0):
-	var request = TerrainChangeRequest.new(player_id, hex_coord, new_type, new_level, duration, height_delta)
+# is_card_created: 是否通过卡牌创建（默认为true，因为通常通过此方法调用的都是卡牌效果）
+func request_terrain_change(player_id: int, hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_level: int = -1, duration: int = -1, height_delta: int = 0, is_card_created: bool = true):
+	# 检查基岩保护
+	var current_terrain = game_map.get_terrain(hex_coord)
+	if current_terrain and not current_terrain.can_be_modified():
+		push_warning("TerrainManager: 基岩地形不可修改: " + str(hex_coord))
+		return
+	
+	# 检查是否试图创建基岩地形（基岩只能通过地图配置创建）
+	if new_type == TerrainTile.TerrainType.BEDROCK and not current_terrain:
+		push_warning("TerrainManager: 不能通过卡牌创建基岩地形: " + str(hex_coord))
+		return
+	
+	var request = TerrainChangeRequest.new(player_id, hex_coord, new_type, new_level, duration, height_delta, is_card_created)
 	terrain_change_requests.append(request)
 
 # 处理本回合的所有地形变化（结算阶段调用）
@@ -90,7 +104,7 @@ func _handle_coord_requests(requests: Array[TerrainChangeRequest]):
 		if final_type == TerrainTile.TerrainType.NORMAL and current_terrain:
 			final_type = current_terrain.terrain_type
 		
-		game_map.modify_terrain(coord, final_type, final_height, final_duration)
+		game_map.modify_terrain(coord, final_type, final_height, final_duration, 0, request.is_card_created)
 		return
 	
 	# 多个请求：处理冲突
@@ -193,14 +207,20 @@ func _handle_coord_requests(requests: Array[TerrainChangeRequest]):
 	if durations.size() > 0:
 		final_duration = durations[0]
 	
-	# 应用最终结果
-	game_map.modify_terrain(coord, final_type, final_height, final_duration)
+	# 应用最终结果（多个请求时，如果任何一个是通过卡牌创建的，就标记为卡牌创建）
+	var is_card_created = false
+	for req in requests:
+		if req.is_card_created:
+			is_card_created = true
+			break
+	game_map.modify_terrain(coord, final_type, final_height, final_duration, 0, is_card_created)
 
 # 应用地形效果（移动加成、隐藏效果等）
 func apply_terrain_effects(sprite: Sprite, hex_coord: Vector2i) -> Dictionary:
 	var effects = {
 		"movement_bonus": 0,
 		"movement_cost_multiplier": 1.0,
+		"movement_range_penalty": 0,  # 移动范围惩罚（用于水流）
 		"is_hidden": false,
 		"can_attack": true
 	}
@@ -214,7 +234,8 @@ func apply_terrain_effects(sprite: Sprite, hex_coord: Vector2i) -> Dictionary:
 		if sprite.attribute == "water":
 			effects.movement_bonus = 1  # 水属性精灵移动距离+1
 		else:
-			effects.movement_cost_multiplier = 2.0  # 非水属性移动成本+1（需消耗2点移动力）
+			# 非水属性精灵在水流上移动范围-1（最小为1）
+			effects.movement_range_penalty = 1
 	
 	# 森林隐藏效果
 	if terrain.has_hide_effect():
@@ -319,7 +340,127 @@ func update_terrain_durations():
 				var current_height = terrain.height_level  # 保持当前高度
 				expired_coords.append(coord)
 				# 恢复为普通地形，但保持当前高度（使用 modify_terrain 确保信号被发出）
-				game_map.modify_terrain(coord, TerrainTile.TerrainType.NORMAL, current_height, -1)
+				# 这不是卡牌创建，所以 is_card_created=false
+				game_map.modify_terrain(coord, TerrainTile.TerrainType.NORMAL, current_height, -1, 0, false)
+
+# 获取相连的水流地形（通过水流可以到达的所有位置）
+# 使用广度优先搜索
+func get_connected_water_tiles(start_coord: Vector2i) -> Array[Vector2i]:
+	var connected: Array[Vector2i] = []
+	var visited: Dictionary = {}
+	var queue: Array[Vector2i] = [start_coord]
+	
+	# 检查起点是否是水流
+	var start_terrain = game_map.get_terrain(start_coord)
+	if not start_terrain or start_terrain.terrain_type != TerrainTile.TerrainType.WATER:
+		return connected
+	
+	visited[_coord_to_key(start_coord)] = true
+	
+	while queue.size() > 0:
+		var current_coord = queue.pop_front()
+		connected.append(current_coord)
+		
+		# 获取相邻地形
+		var neighbors = HexGrid.get_neighbors(current_coord)
+		for neighbor_coord in neighbors:
+			var key = _coord_to_key(neighbor_coord)
+			if visited.has(key):
+				continue
+			
+			# 检查坐标是否有效
+			if not game_map.is_valid_hex_with_terrain(neighbor_coord):
+				continue
+			
+			var neighbor_terrain = game_map.get_terrain(neighbor_coord)
+			if neighbor_terrain and neighbor_terrain.terrain_type == TerrainTile.TerrainType.WATER:
+				visited[key] = true
+				queue.append(neighbor_coord)
+	
+	return connected
+
+# 处理水流传播（水往低处流）
+# 规则：每回合重新计算水流，只保留高度>1的水流作为水源，从水源重新扩散
+func spread_water_flow():
+	# 第一步：收集所有水源（高度>1的水流地形）的坐标和原始地形类型
+	var water_sources: Array[Dictionary] = []  # [{coord: Vector2i, original_type: TerrainType, height: int}]
+	var non_source_water_coords: Array[Vector2i] = []  # 需要清除的非水源水流
+	
+	# 遍历所有地形，分类水源和非水源水流
+	for key in game_map.terrain_tiles.keys():
+		var terrain = game_map.terrain_tiles[key]
+		if terrain.terrain_type == TerrainTile.TerrainType.WATER:
+			# 水源条件：高度>1 或 标记为水源（通过卡牌创建的，即使高度降到1也保持为水源）
+			if terrain.height_level > 1 or terrain.is_water_source:
+				# 水源：记录坐标和高度
+				# 注意：水源本身保持为水流，不需要恢复
+				water_sources.append({
+					"coord": terrain.hex_coord,
+					"height": terrain.height_level
+				})
+			else:
+				# 非水源水流：需要清除，恢复为普通地形
+				non_source_water_coords.append(terrain.hex_coord)
+	
+	# 第二步：清除所有非水源的水流地形（恢复为普通地形，保持高度）
+	for coord in non_source_water_coords:
+		var terrain = game_map.get_terrain(coord)
+		if terrain and terrain.terrain_type == TerrainTile.TerrainType.WATER:
+			# 恢复为普通地形，保持当前高度
+			# 这不是卡牌创建，所以 is_card_created=false
+			var current_height = terrain.height_level
+			game_map.modify_terrain(coord, TerrainTile.TerrainType.NORMAL, current_height, -1, 0, false)
+	
+	# 第三步：从所有水源重新计算流向
+	for source_info in water_sources:
+		var source_coord = source_info.coord
+		var source_height = source_info.height
+		
+		var water_terrain = game_map.get_terrain(source_coord)
+		if not water_terrain or water_terrain.terrain_type != TerrainTile.TerrainType.WATER:
+			continue
+		
+		# 使用广度优先搜索从水源扩散
+		var visited: Dictionary = {}
+		var queue: Array[Dictionary] = [{"coord": source_coord, "height": source_height}]
+		visited[_coord_to_key(source_coord)] = true
+		
+		while queue.size() > 0:
+			var current = queue.pop_front()
+			var current_coord = current.coord
+			var current_height = current.height
+			
+			# 获取相邻地形
+			var neighbors = HexGrid.get_neighbors(current_coord)
+			for neighbor_coord in neighbors:
+				var key = _coord_to_key(neighbor_coord)
+				if visited.has(key):
+					continue
+				
+				# 检查坐标是否有效
+				if not game_map.is_valid_hex_with_terrain(neighbor_coord):
+					continue
+				
+				var neighbor_terrain = game_map.get_terrain(neighbor_coord)
+				if not neighbor_terrain:
+					continue
+				
+				var neighbor_height = neighbor_terrain.height_level
+				
+				# 检查是否可以扩散（相邻地形高度低于当前水流高度，且不是水源）
+				if neighbor_height < current_height:
+					# 如果相邻地形不是水流，则创建水流
+					if neighbor_terrain.terrain_type != TerrainTile.TerrainType.WATER:
+						# 创建新水流地形（保持相邻地形的高度）
+						# 扩散创建的水流不标记为水源（is_card_created=false）
+						game_map.modify_terrain(neighbor_coord, TerrainTile.TerrainType.WATER, neighbor_height, -1, 0, false)
+						visited[key] = true
+						# 继续从这个位置扩散（如果高度>1）
+						if neighbor_height > 1:
+							queue.append({"coord": neighbor_coord, "height": neighbor_height})
+					else:
+						# 相邻已经是水流（可能是其他水源），标记为已访问但不继续扩散
+						visited[key] = true
 
 func _coord_to_key(hex_coord: Vector2i) -> String:
 	return str(hex_coord.x) + "_" + str(hex_coord.y)

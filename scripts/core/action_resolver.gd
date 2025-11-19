@@ -95,6 +95,8 @@ func resolve_all_actions():
 	_resolve_actions(terrain_actions)
 	# 地形变化执行后，立即应用到地图（这样后续的移动可以正确检查路径高度）
 	terrain_manager.resolve_terrain_changes()
+	# 注意：水流传播不在回合中处理，只在回合开始时统一处理
+	# 这样可以避免每回合多次清除和扩散，减少性能开销
 	_resolve_actions(attack_actions)
 	_resolve_actions(move_actions)
 	_resolve_actions(other_actions)
@@ -173,8 +175,8 @@ func _resolve_attack_action(action: Action) -> Dictionary:
 	
 	# 如果是卡牌攻击，使用 apply_card_effect 处理（包括附带的地形修改效果）
 	if action.card:
-		# 检查攻击范围
-		if not action.sprite.is_in_attack_range(target.hex_position):
+		# 检查攻击范围（传递 game_map 和 terrain_manager 以支持水精灵特殊能力）
+		if not action.sprite.is_in_attack_range(target.hex_position, game_map, terrain_manager):
 			return {"success": false, "message": "目标不在攻击范围内"}
 		
 		# 检查高度限制
@@ -201,17 +203,25 @@ func _resolve_attack_action(action: Action) -> Dictionary:
 
 # 执行攻击（公共方法，可直接调用）
 func execute_attack(sprite: Sprite, target: Sprite, is_basic_action: bool = false, player_id: int = -1, card: Card = null) -> Dictionary:
-	# 检查攻击范围
-	if not sprite.is_in_attack_range(target.hex_position):
+	# 检查攻击范围（传递 game_map 和 terrain_manager 以支持水精灵特殊能力）
+	if not sprite.is_in_attack_range(target.hex_position, game_map, terrain_manager):
 		return {"success": false, "message": "目标不在攻击范围内"}
 	
-	# 检查高度限制
+	# 检查高度限制（水精灵在相连水流中无视高度）
 	var attacker_terrain = game_map.get_terrain(sprite.hex_position)
 	var target_terrain = game_map.get_terrain(target.hex_position)
 	var attacker_level = attacker_terrain.height_level if attacker_terrain else 1
 	var target_level = target_terrain.height_level if target_terrain else 1
 	
-	if not terrain_manager.can_attack_height(attacker_level, target_level, sprite.attack_height_limit):
+	# 水精灵在相连水流中无视高度限制
+	var ignore_height = false
+	if sprite.attribute == "water" and attacker_terrain and attacker_terrain.terrain_type == TerrainTile.TerrainType.WATER and \
+	   target_terrain and target_terrain.terrain_type == TerrainTile.TerrainType.WATER:
+		var connected_water = terrain_manager.get_connected_water_tiles(sprite.hex_position)
+		if target.hex_position in connected_water:
+			ignore_height = true
+	
+	if not ignore_height and not terrain_manager.can_attack_height(attacker_level, target_level, sprite.attack_height_limit):
 		return {"success": false, "message": "高度限制：无法攻击该目标"}
 	
 	# 计算伤害（基本攻击固定1点）
@@ -301,7 +311,22 @@ func execute_move(sprite: Sprite, target_pos: Vector2i, is_basic_action: bool = 
 	
 	# 执行移动（使用实际目标位置）
 	var old_pos = sprite.hex_position
+	var old_terrain = game_map.get_terrain(old_pos)
 	sprite.move_to(actual_target_pos)
+	
+	# 检查是否进入焦土地形
+	var new_terrain = game_map.get_terrain(actual_target_pos)
+	if new_terrain and new_terrain.terrain_type == TerrainTile.TerrainType.SCORCHED:
+		# 检查是否从森林变为焦土（森林焚毁时）
+		var was_in_forest = old_terrain and old_terrain.terrain_type == TerrainTile.TerrainType.FOREST and not old_terrain.is_burned
+		if was_in_forest:
+			# 森林变为焦土，视作首次进入，造成-1血伤害
+			sprite.take_damage(1)
+			print("焦土伤害（森林焚毁）: ", sprite.sprite_name, " 进入焦土受到1点伤害，当前血量: ", sprite.current_hp)
+		elif old_pos != actual_target_pos:
+			# 正常移动到焦土，造成-1血伤害
+			sprite.take_damage(1)
+			print("焦土伤害（进入）: ", sprite.sprite_name, " 进入焦土受到1点伤害，当前血量: ", sprite.current_hp)
 	
 	# 如果路径被阻挡，在消息中说明
 	if not path_check.valid:

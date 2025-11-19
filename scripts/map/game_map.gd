@@ -317,12 +317,23 @@ func _set_terrain(hex_coord: Vector2i, terrain: TerrainTile):
 	terrain_changed.emit(hex_coord, terrain)
 
 # 修改地形（用于卡牌效果等）
-func modify_terrain(hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_level: int = -1, duration: int = -1, height_delta: int = 0) -> bool:
+# is_card_created: 是否通过卡牌创建（用于标记水源）
+func modify_terrain(hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_level: int = -1, duration: int = -1, height_delta: int = 0, is_card_created: bool = false) -> bool:
 	if not _is_valid_hex(hex_coord):
 		push_warning("GameMap: 无效坐标: " + str(hex_coord))
 		return false
 	
 	var terrain = get_terrain(hex_coord)
+	
+	# 检查基岩保护：如果现有地形是基岩，则拒绝修改
+	if terrain and not terrain.can_be_modified():
+		push_warning("GameMap: 基岩地形不可修改: " + str(hex_coord))
+		return false
+	
+	# 检查是否试图创建基岩地形（基岩只能通过地图配置创建，不能通过卡牌创建）
+	if new_type == TerrainTile.TerrainType.BEDROCK and not terrain:
+		push_warning("GameMap: 不能通过卡牌创建基岩地形: " + str(hex_coord))
+		return false
 	var final_height = 1
 	
 	if not terrain:
@@ -336,6 +347,11 @@ func modify_terrain(hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_
 			final_height = 1
 		
 		terrain = TerrainTile.new(hex_coord, new_type, final_height)
+		# 如果是通过卡牌创建的水流地形，无论高度都标记为水源
+		# 如果是通过扩散创建的水流地形，只有高度>1才标记为水源
+		if new_type == TerrainTile.TerrainType.WATER:
+			if is_card_created or final_height > 1:
+				terrain.is_water_source = true
 		_set_terrain(hex_coord, terrain)
 	else:
 		# 修改现有地形
@@ -348,6 +364,16 @@ func modify_terrain(hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_
 		else:
 			# 保持当前高度
 			final_height = terrain.height_level
+		
+		# 如果改为水流地形，标记为水源的条件：
+		# 1. 通过卡牌创建的，无论高度都标记为水源
+		# 2. 高度>1的，标记为水源
+		# 3. 如果已经是水源，保持水源标记（即使高度降到1）
+		if new_type == TerrainTile.TerrainType.WATER:
+			if is_card_created or final_height > 1:
+				terrain.is_water_source = true
+			# 如果已经是水源，即使高度降到1也保持水源标记
+			# （is_water_source 一旦设置为 true 就不会被清除）
 		
 		terrain.terrain_type = new_type
 		terrain.height_level = final_height
@@ -444,8 +470,10 @@ func _terrain_type_from_string(type_name: String) -> TerrainTile.TerrainType:
 			return TerrainTile.TerrainType.FOREST
 		"water":
 			return TerrainTile.TerrainType.WATER
-		"rock":
-			return TerrainTile.TerrainType.ROCK
+		"rock", "bedrock":
+			return TerrainTile.TerrainType.BEDROCK
+		"scorched":
+			return TerrainTile.TerrainType.SCORCHED
 		_:
 			return TerrainTile.TerrainType.NORMAL
 

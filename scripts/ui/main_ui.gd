@@ -1402,7 +1402,7 @@ func _highlight_attackable_friendly_sprites(target_sprite: Sprite):
 		# 确保是己方精灵且能攻击目标
 		if sprite.is_alive and sprite.owner_player_id == GameManager.HUMAN_PLAYER_ID:
 			# 检查是否在攻击范围内（不同阵营才能攻击）
-			if target_player_id != GameManager.HUMAN_PLAYER_ID and sprite.is_in_attack_range(target_sprite.hex_position):
+			if target_player_id != GameManager.HUMAN_PLAYER_ID and sprite.is_in_attack_range(target_sprite.hex_position, game_manager.game_map, game_manager.terrain_manager):
 				game_manager.terrain_renderer.highlight_selected_position(sprite.hex_position)
 				discard_action_state.highlighted_sprites.append(sprite)
 	

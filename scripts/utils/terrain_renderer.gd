@@ -9,6 +9,7 @@ var highlight_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstan
 var selected_highlight_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（已选择位置高亮，红色）
 var preview_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（精灵预览）
 var contest_point_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（争夺点地标）
+var water_source_nodes: Dictionary = {}  # key: hex_coord string, value: MeshInstance3D（水源标记）
 
 # 战争迷雾系统
 var fog_of_war_manager: FogOfWarManager = null
@@ -88,6 +89,13 @@ func _render_terrain_tile(hex_coord: Vector2i, terrain: TerrainTile):
 	
 	add_child(mesh_instance)
 	terrain_nodes[key] = mesh_instance
+	
+	# 如果是水源，添加水源标记
+	if terrain.terrain_type == TerrainTile.TerrainType.WATER and terrain.is_water_source:
+		_create_water_source_marker(hex_coord, terrain)
+	else:
+		# 如果不是水源，移除标记（如果存在）
+		_remove_water_source_marker(hex_coord)
 
 func _render_contest_point_markers():
 	if not game_map:
@@ -142,6 +150,69 @@ func _create_contest_point_marker(coord: Vector2i):
 	add_child(mesh_instance)
 	contest_point_nodes[key] = mesh_instance
 
+func _create_water_source_marker(coord: Vector2i, terrain: TerrainTile):
+	var key = _coord_to_key(coord)
+	
+	# 如果已存在，先移除
+	if water_source_nodes.has(key):
+		var existing = water_source_nodes[key]
+		if is_instance_valid(existing):
+			existing.queue_free()
+		water_source_nodes.erase(key)
+	
+	# 创建水源标记（一个小球体，浮在水源上方）
+	var mesh_instance = MeshInstance3D.new()
+	mesh_instance.mesh = ModelGenerator.create_sphere_mesh(0.15, 12)  # 小球体标记
+	
+	var material = StandardMaterial3D.new()
+	material.albedo_color = Color(0.5, 0.9, 1.0, 0.9)  # 亮蓝色，半透明
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.emission_enabled = true
+	material.emission = Color(0.5, 0.9, 1.0, 1.0) * 0.8  # 强发光
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mesh_instance.material_override = material
+	
+	var hex_size = game_map.hex_size if game_map else 1.5
+	var map_height = game_map.map_height if game_map else 20
+	var map_width = game_map.map_width if game_map else 20
+	var world_pos = HexGrid.hex_to_world(coord, hex_size, map_height, map_width)
+	
+	var terrain_height = _get_height_for_level(terrain.height_level)
+	world_pos.y = terrain_height + 0.3  # 浮在地形上方
+	
+	mesh_instance.position = world_pos
+	water_source_nodes[key] = mesh_instance
+	add_child(mesh_instance)
+
+func _remove_water_source_marker(coord: Vector2i):
+	var key = _coord_to_key(coord)
+	if water_source_nodes.has(key):
+		var marker = water_source_nodes[key]
+		if is_instance_valid(marker):
+			marker.queue_free()
+		water_source_nodes.erase(key)
+
+func _update_water_source_marker_position(hex_coord: Vector2i, terrain: TerrainTile):
+	var key = _coord_to_key(hex_coord)
+	if not water_source_nodes.has(key):
+		return
+	
+	var marker = water_source_nodes[key]
+	if not is_instance_valid(marker):
+		water_source_nodes.erase(key)
+		return
+	
+	# 更新标记位置（如果地形高度改变）
+	var hex_size = game_map.hex_size if game_map else 1.5
+	var map_height = game_map.map_height if game_map else 20
+	var map_width = game_map.map_width if game_map else 20
+	var world_pos = HexGrid.hex_to_world(hex_coord, hex_size, map_height, map_width)
+	
+	var terrain_height = _get_height_for_level(terrain.height_level)
+	world_pos.y = terrain_height + 0.3  # 浮在地形上方
+	
+	marker.position = world_pos
+
 func _update_contest_marker_position(hex_coord: Vector2i):
 	var key = _coord_to_key(hex_coord)
 	if not contest_point_nodes.has(key):
@@ -189,14 +260,25 @@ func _create_terrain_material(terrain: TerrainTile) -> StandardMaterial3D:
 			material.emission = Color(0.1, 0.6, 0.2) * 0.3  # 绿色发光
 		TerrainTile.TerrainType.WATER:
 			# 水流：蓝色六边形，不透明但明显
-			material.albedo_color = Color(0.2, 0.5, 1.0)  # 鲜艳的蓝色，不透明
-			material.emission_enabled = true
-			material.emission = Color(0.2, 0.5, 1.0) * 0.3  # 蓝色发光
+			if terrain.is_water_source:
+				# 水源：使用更亮的蓝色和更强的发光效果
+				material.albedo_color = Color(0.3, 0.7, 1.0)  # 更亮的蓝色
+				material.emission_enabled = true
+				material.emission = Color(0.3, 0.7, 1.0) * 0.6  # 更强的蓝色发光（水源标识）
+			else:
+				# 普通水流：标准蓝色
+				material.albedo_color = Color(0.2, 0.5, 1.0)  # 鲜艳的蓝色，不透明
+				material.emission_enabled = true
+				material.emission = Color(0.2, 0.5, 1.0) * 0.3  # 蓝色发光
 			# 移除透明度，让蓝色更明显
-		TerrainTile.TerrainType.ROCK:
+		TerrainTile.TerrainType.BEDROCK:
 			material.albedo_color = Color(0.3, 0.3, 0.3)  # 深灰色
 			material.emission_enabled = true
 			material.emission = Color(0.3, 0.3, 0.3) * 0.1
+		TerrainTile.TerrainType.SCORCHED:
+			material.albedo_color = Color(0.2, 0.1, 0.05)  # 焦黑色
+			material.emission_enabled = true
+			material.emission = Color(0.3, 0.1, 0.0) * 0.2  # 微弱的红色发光
 	
 	material.metallic = 0.1
 	material.roughness = 0.7
@@ -213,6 +295,8 @@ func _on_terrain_changed(hex_coord: Vector2i, terrain: TerrainTile):
 	# 地形变化后更新高亮节点位置（因为高度可能改变）
 	_update_highlight_positions(hex_coord)
 	_update_contest_marker_position(hex_coord)
+	# 更新水源标记位置（如果高度改变）
+	_update_water_source_marker_position(hex_coord, terrain)
 	# 地形变化后更新迷雾覆盖层（因为高度可能改变）
 	call_deferred("_update_fog_overlay")
 

@@ -101,7 +101,18 @@ func attack_target(target: Sprite, damage: int = 1):
 	return true
 
 # 检查是否在攻击范围内
-func is_in_attack_range(target_position: Vector2i) -> bool:
+func is_in_attack_range(target_position: Vector2i, game_map: GameMap = null, terrain_manager: TerrainManager = null) -> bool:
+	# 水精灵特殊能力：在相连水流中无视距离攻击
+	if attribute == "water" and game_map and terrain_manager:
+		var current_terrain = game_map.get_terrain(hex_position)
+		var target_terrain = game_map.get_terrain(target_position)
+		if current_terrain and current_terrain.terrain_type == TerrainTile.TerrainType.WATER and \
+		   target_terrain and target_terrain.terrain_type == TerrainTile.TerrainType.WATER:
+			# 检查是否在相连水流中
+			var connected_water = terrain_manager.get_connected_water_tiles(hex_position)
+			if target_position in connected_water:
+				return true  # 无视距离和高度
+	
 	var distance = HexGrid.hex_distance(hex_position, target_position)
 	return distance <= attack_range
 
@@ -113,8 +124,36 @@ func is_in_vision_range(target_position: Vector2i) -> bool:
 # 获取可移动到的位置列表（考虑路径高度限制）
 func get_movable_positions(game_map: GameMap, terrain_manager: TerrainManager) -> Array[Vector2i]:
 	var movable: Array[Vector2i] = []
+	
+	# 水精灵特殊能力：在相连水流中无视距离和高度移动
+	if attribute == "water":
+		var current_terrain = game_map.get_terrain(hex_position)
+		if current_terrain and current_terrain.terrain_type == TerrainTile.TerrainType.WATER:
+			var connected_water = terrain_manager.get_connected_water_tiles(hex_position)
+			for water_pos in connected_water:
+				if game_map.is_valid_hex_with_terrain(water_pos):
+					movable.append(water_pos)
+			# 水精灵仍然可以正常移动到非水流位置（在移动范围内）
+			var range_hexes = HexGrid.get_hexes_in_range(hex_position, base_movement)
+			for hex_pos in range_hexes:
+				if hex_pos in connected_water:
+					continue  # 已经添加过了
+				if not game_map.is_valid_hex_with_terrain(hex_pos):
+					continue
+				if terrain_manager.can_move_to(self, hex_pos):
+					movable.append(hex_pos)
+			return movable
+	
+	# 普通精灵：考虑移动范围惩罚（水流地形）
+	var effective_movement = base_movement
+	var current_terrain = game_map.get_terrain(hex_position)
+	if current_terrain:
+		var terrain_effects = terrain_manager.apply_terrain_effects(self, hex_position)
+		if terrain_effects.has("movement_range_penalty"):
+			effective_movement = max(1, base_movement - terrain_effects.movement_range_penalty)
+	
 	# 获取移动范围内的所有位置
-	var range_hexes = HexGrid.get_hexes_in_range(hex_position, base_movement)
+	var range_hexes = HexGrid.get_hexes_in_range(hex_position, effective_movement)
 	
 	for hex_pos in range_hexes:
 		# 使用坐标白名单检查（必须有实际地形板块）

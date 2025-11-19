@@ -46,8 +46,40 @@
       "type": "core",
       "center": {"q": 24, "r": 24},
       "radius": 3,
-      "terrain_type": "rock",
+      "terrain_type": "bedrock",
       "height": 2
+    },
+    {
+      "name": "forest_1",
+      "type": "terrain",
+      "center": {"q": 20, "r": 30},
+      "radius": 2,
+      "terrain_type": "forest",
+      "height": 1
+    },
+    {
+      "name": "forest_2",
+      "type": "terrain",
+      "center": {"q": 30, "r": 18},
+      "radius": 2,
+      "terrain_type": "forest",
+      "height": 1
+    },
+    {
+      "name": "forest_3",
+      "type": "terrain",
+      "center": {"q": 18, "r": 18},
+      "radius": 2,
+      "terrain_type": "forest",
+      "height": 1
+    },
+    {
+      "name": "forest_4",
+      "type": "terrain",
+      "center": {"q": 30, "r": 30},
+      "radius": 2,
+      "terrain_type": "forest",
+      "height": 1
     }
   ],
   "paths": [

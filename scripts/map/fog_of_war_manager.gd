@@ -201,6 +201,51 @@ func is_visible_to_player(hex_coord: Vector2i, player_id: int) -> bool:
 	
 	return false
 
+# 检查精灵是否对某个玩家可见（考虑森林隐藏机制）
+# sprite: 要检查的精灵
+# observer_player_id: 观察者玩家ID
+# observer_sprites: 观察者玩家的所有精灵（用于计算视野）
+# game_map: 地图引用
+func is_sprite_visible_to_player(sprite: Sprite, observer_player_id: int, observer_sprites: Array[Sprite], game_map: GameMap) -> bool:
+	# 己方精灵始终可见
+	if sprite.owner_player_id == observer_player_id:
+		return true
+	
+	# 检查精灵位置是否在可见区域中
+	if not is_visible_to_player(sprite.hex_position, observer_player_id):
+		return false
+	
+	# 检查森林隐藏机制
+	var sprite_terrain = game_map.get_terrain(sprite.hex_position)
+	if sprite_terrain and sprite_terrain.has_hide_effect():
+		# 精灵在森林中，检查是否有观察者在1格内
+		var has_nearby_observer = false
+		for observer_sprite in observer_sprites:
+			if not observer_sprite.is_alive:
+				continue
+			
+			var observer_terrain = game_map.get_terrain(observer_sprite.hex_position)
+			var observer_in_forest = false
+			if observer_terrain:
+				observer_in_forest = observer_terrain.has_hide_effect()
+			
+			var distance = HexGrid.hex_distance(observer_sprite.hex_position, sprite.hex_position)
+			
+			if observer_in_forest:
+				# 观察者在森林内，可以看到森林内的精灵
+				has_nearby_observer = true
+				break
+			elif distance <= 1:
+				# 观察者在森林外但距离1格内，可以看到森林内的精灵
+				has_nearby_observer = true
+				break
+		
+		# 如果没有附近的观察者，精灵在森林中不可见
+		if not has_nearby_observer:
+			return false
+	
+	return true
+
 # 获取玩家所有可见坐标
 func get_visible_coords(player_id: int) -> Array[Vector2i]:
 	if not visible_areas.has(player_id):

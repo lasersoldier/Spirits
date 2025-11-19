@@ -11,6 +11,7 @@ var game_map: GameMap  # 地图引用，用于获取地图参数
 # 战争迷雾系统
 var fog_of_war_manager: FogOfWarManager = null
 var current_player_id: int = -1
+var all_sprites: Array[Sprite] = []  # 所有精灵列表（用于可见性检查）
 
 # 分散站位系统
 var sprite_hex_indices: Dictionary = {}  # key: sprite实例, value: 在该六边形内的索引（用于计算偏移）
@@ -310,8 +311,13 @@ func _update_sprite_fog_visibility(sprite: Sprite):
 		# 己方精灵：始终可见
 		mesh_instance.visible = true
 	else:
-		# 敌方精灵：只有在视野内才可见
-		var is_visible = fog_of_war_manager.is_visible_to_player(sprite.hex_position, current_player_id)
+		# 敌方精灵：使用新的可见性检查（考虑森林隐藏）
+		var observer_sprites: Array[Sprite] = []
+		for s in all_sprites:
+			if s.owner_player_id == current_player_id and s.is_alive:
+				observer_sprites.append(s)
+		
+		var is_visible = fog_of_war_manager.is_sprite_visible_to_player(sprite, current_player_id, observer_sprites, game_map)
 		mesh_instance.visible = is_visible
 
 # 获取指定六边形的所有精灵

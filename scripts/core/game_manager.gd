@@ -315,6 +315,17 @@ func _initialize_round():
 	# 更新地形效果持续时间
 	terrain_manager.update_terrain_durations()
 	
+	# 处理水流传播（每回合开始时）
+	terrain_manager.spread_water_flow()
+	
+	# 处理焦土地形伤害（每回合开始时，所有在焦土上的精灵-1血）
+	for sprite in all_sprites:
+		if sprite.is_alive:
+			var terrain = game_map.get_terrain(sprite.hex_position)
+			if terrain and terrain.terrain_type == TerrainTile.TerrainType.SCORCHED:
+				sprite.take_damage(1)
+				print("焦土伤害: ", sprite.sprite_name, " 在焦土上受到1点伤害，当前血量: ", sprite.current_hp)
+	
 	# 更新卡牌冷却
 	for player_id in hand_managers.keys():
 		var hand = hand_managers[player_id]
@@ -726,6 +737,7 @@ func _setup_map_rendering():
 	# 创建精灵渲染器
 	sprite_renderer = SpriteRenderer.new()
 	sprite_renderer.game_map = game_map  # 传递地图引用
+	sprite_renderer.all_sprites = all_sprites  # 传递所有精灵列表
 	world_node.add_child(sprite_renderer)
 	
 	# 连接迷雾系统到精灵渲染器
