@@ -684,8 +684,37 @@ func clear_previews():
 			node.queue_free()
 	preview_nodes.clear()
 
-# 获取精灵预览网格
+# 获取精灵预览网格（尝试加载真实模型，失败则使用占位符）
 func _get_sprite_preview_mesh(attribute: String) -> ArrayMesh:
+	# 尝试从 sprite_data.json 加载模型路径
+	var sprite_data_file = "res://resources/data/sprite_data.json"
+	if ResourceLoader.exists(sprite_data_file):
+		var file = FileAccess.open(sprite_data_file, FileAccess.READ)
+		if file:
+			var json_string = file.get_as_text()
+			file.close()
+			var json = JSON.new()
+			var parse_result = json.parse(json_string)
+			if parse_result == OK:
+				var data = json.data
+				if data.has("sprites"):
+					for sprite in data["sprites"]:
+						if sprite.get("attribute") == attribute:
+							var model_path = sprite.get("model_path", "")
+							if model_path and ResourceLoader.exists(model_path):
+								# 尝试加载模型（预览只使用网格，不实例化完整场景）
+								var model_scene = load(model_path)
+								if model_scene and model_scene is PackedScene:
+									var temp_instance = model_scene.instantiate()
+									if temp_instance:
+										var mesh_instance = _find_mesh_instance_in_node(temp_instance)
+										if mesh_instance and mesh_instance.mesh:
+											var mesh = mesh_instance.mesh
+											temp_instance.queue_free()
+											return mesh
+										temp_instance.queue_free()
+	
+	# 回退到占位符
 	match attribute:
 		"fire":
 			return ModelGenerator.create_sprite_mesh_fire()
@@ -697,6 +726,16 @@ func _get_sprite_preview_mesh(attribute: String) -> ArrayMesh:
 			return ModelGenerator.create_sprite_mesh_rock()
 		_:
 			return ModelGenerator.create_box_mesh(0.4, 0.4, 0.4)
+
+# 辅助函数：在节点树中查找 MeshInstance3D
+func _find_mesh_instance_in_node(node: Node) -> MeshInstance3D:
+	if node is MeshInstance3D:
+		return node
+	for child in node.get_children():
+		var result = _find_mesh_instance_in_node(child)
+		if result:
+			return result
+	return null
 
 # 获取属性颜色
 func _get_attribute_color(attr: String) -> Color:

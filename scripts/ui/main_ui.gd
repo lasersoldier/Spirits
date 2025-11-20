@@ -1796,27 +1796,34 @@ func _select_move_target_for_discard_action(hex_coord: Vector2i):
 	
 	var source_sprite = discard_action_state.source_sprite
 	
-	# 基本行动（弃牌行动）不消耗移动力，所以不需要检查剩余移动力
-	# 但是移动距离不能超过基础移动力范围
-	
-	# 检查是否是可移动的位置（使用循环比较以确保类型匹配）
-	var is_valid_target = false
-	for highlighted_hex in discard_action_state.highlighted_hexes:
-		if highlighted_hex == hex_coord:
-			is_valid_target = true
-			break
-	
 	# 如果点击的是当前位置，不允许原地停留（基本行动不消耗移动力，但原地停留没有意义）
 	if hex_coord == source_sprite.hex_position:
 		print("警告：点击了当前位置，原地停留没有意义")
 		return
 	
-	if not is_valid_target:
-		print("无法移动到该位置: ", hex_coord, " 不在可移动位置列表中")
-		print("剩余移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement)
-		# 打印前几个高亮位置用于调试
-		if discard_action_state.highlighted_hexes.size() > 0:
-			print("可移动位置示例: ", discard_action_state.highlighted_hexes[0])
+	# 基本行动（弃牌行动）不消耗移动力，但是移动距离不能超过基础移动力范围
+	# 检查距离是否在基础移动力范围内
+	var distance = HexGrid.hex_distance(source_sprite.hex_position, hex_coord)
+	if distance > source_sprite.base_movement:
+		print("无法移动到该位置: ", hex_coord, " 距离 ", distance, " 超过基础移动力 ", source_sprite.base_movement)
+		return
+	
+	# 实时验证目标位置是否可移动（使用最新的地形数据）
+	# 这样可以处理同一回合内地形变化的情况
+	if not game_manager or not game_manager.terrain_manager:
+		print("错误：无法获取地形管理器")
+		return
+	
+	var can_move = game_manager.terrain_manager.can_move_to(source_sprite, hex_coord)
+	if not can_move:
+		print("无法移动到该位置: ", hex_coord, " 路径检查失败（可能是地形高度限制）")
+		# 打印当前位置和目标位置的地形信息用于调试
+		var current_terrain = game_manager.game_map.get_terrain(source_sprite.hex_position)
+		var target_terrain = game_manager.game_map.get_terrain(hex_coord)
+		if current_terrain:
+			print("  当前位置地形高度: ", current_terrain.height_level)
+		if target_terrain:
+			print("  目标位置地形高度: ", target_terrain.height_level)
 		return
 	
 	# 提交弃牌移动行动

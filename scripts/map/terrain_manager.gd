@@ -32,24 +32,30 @@ func _init(map: GameMap):
 # 添加地形变化请求
 # is_card_created: 是否通过卡牌创建（默认为true，因为通常通过此方法调用的都是卡牌效果）
 func request_terrain_change(player_id: int, hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_level: int = -1, duration: int = -1, height_delta: int = 0, is_card_created: bool = true):
+	print("TerrainManager: request_terrain_change 被调用 - 坐标: ", hex_coord, " 高度变化: ", height_delta, " 设置高度: ", new_level, " 当前请求数量: ", terrain_change_requests.size())
 	# 检查基岩保护
 	var current_terrain = game_map.get_terrain(hex_coord)
 	if current_terrain and not current_terrain.can_be_modified():
 		push_warning("TerrainManager: 基岩地形不可修改: " + str(hex_coord))
+		print("TerrainManager: 请求被拒绝 - 基岩保护")
 		return
 	
 	# 检查是否试图创建基岩地形（基岩只能通过地图配置创建）
 	if new_type == TerrainTile.TerrainType.BEDROCK and not current_terrain:
 		push_warning("TerrainManager: 不能通过卡牌创建基岩地形: " + str(hex_coord))
+		print("TerrainManager: 请求被拒绝 - 不能创建基岩")
 		return
 	
 	var request = TerrainChangeRequest.new(player_id, hex_coord, new_type, new_level, duration, height_delta, is_card_created)
 	terrain_change_requests.append(request)
+	print("TerrainManager: 地形变化请求已添加 - 坐标: ", hex_coord, " 新请求数量: ", terrain_change_requests.size())
 
 # 处理本回合的所有地形变化（结算阶段调用）
 func resolve_terrain_changes():
 	if terrain_change_requests.is_empty():
 		return
+	
+	print("TerrainManager: 开始处理 ", terrain_change_requests.size(), " 个地形变化请求")
 	
 	# 按坐标分组请求
 	var requests_by_coord: Dictionary = {}
@@ -67,6 +73,7 @@ func resolve_terrain_changes():
 	
 	# 清空请求列表
 	terrain_change_requests.clear()
+	print("TerrainManager: 地形变化请求处理完成")
 
 # 处理同一坐标的多个请求
 func _handle_coord_requests(requests: Array[TerrainChangeRequest]):
@@ -104,7 +111,12 @@ func _handle_coord_requests(requests: Array[TerrainChangeRequest]):
 		if final_type == TerrainTile.TerrainType.NORMAL and current_terrain:
 			final_type = current_terrain.terrain_type
 		
+		print("TerrainManager: 应用地形变化 - 坐标: ", coord, " 从高度 ", current_height, " 改为高度 ", final_height)
 		game_map.modify_terrain(coord, final_type, final_height, final_duration, 0, request.is_card_created)
+		# 验证地形已更新
+		var updated_terrain = game_map.get_terrain(coord)
+		if updated_terrain:
+			print("TerrainManager: 验证地形已更新 - 坐标: ", coord, " 当前高度: ", updated_terrain.height_level)
 		return
 	
 	# 多个请求：处理冲突

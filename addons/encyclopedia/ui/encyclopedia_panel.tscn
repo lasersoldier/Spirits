@@ -1,6 +1,6 @@
-[gd_scene load_steps=2 format=3 uid="uid://encyclopedia_panel"]
+[gd_scene load_steps=2 format=3 uid="uid://dpmro7bamj62l"]
 
-[ext_resource type="Script" path="res://addons/encyclopedia/ui/encyclopedia_panel.gd" id="1_encyclopedia"]
+[ext_resource type="Script" uid="uid://bgh3fpmwyo6c8" path="res://addons/encyclopedia/ui/encyclopedia_panel.gd" id="1_encyclopedia"]
 
 [node name="EncyclopediaPanel" type="Control"]
 layout_mode = 3
@@ -27,10 +27,29 @@ size_flags_horizontal = 3
 [node name="CategoryOption" type="OptionButton" parent="HSplitContainer/LeftPanel"]
 layout_mode = 2
 size_flags_horizontal = 3
+selected = 0
+item_count = 6
+popup/item_0/text = "精灵属性"
+popup/item_0/id = 0
+popup/item_1/text = "精灵特质"
+popup/item_1/id = 1
+popup/item_2/text = "卡牌效果"
+popup/item_2/id = 2
+popup/item_3/text = "游戏机制"
+popup/item_3/id = 3
+popup/item_4/text = "精灵信息"
+popup/item_4/id = 4
+popup/item_5/text = "卡牌信息"
+popup/item_5/id = 5
 
 [node name="EntryList" type="ItemList" parent="HSplitContainer/LeftPanel"]
 layout_mode = 2
 size_flags_vertical = 3
+item_count = 4
+item_0/text = "火属性"
+item_1/text = "风属性"
+item_2/text = "水属性"
+item_3/text = "岩属性"
 
 [node name="RightPanel" type="VBoxContainer" parent="HSplitContainer"]
 layout_mode = 2
@@ -58,5 +77,3 @@ layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
 scroll_following = true
-text = ""
-

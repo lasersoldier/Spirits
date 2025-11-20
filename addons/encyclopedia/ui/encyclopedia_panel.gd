@@ -19,6 +19,7 @@ var category_names = {
 	"attributes": "精灵属性",
 	"traits": "精灵特质",
 	"card_effects": "卡牌效果",
+	"game_mechanics": "游戏机制",
 	"sprites": "精灵信息",
 	"cards": "卡牌信息"
 }
@@ -251,6 +252,15 @@ func _show_encyclopedia_entry_details(entry_name: String):
 			for card_id in card_ids:
 				var card_name = _get_card_name_by_id(card_id)
 				content_text += "  • " + card_name + " (" + card_id + ")\n"
+	
+	elif current_category == "game_mechanics":
+		# 游戏机制特色
+		var features = entry_info.get("features", [])
+		if features.size() > 0:
+			content_text += "[b]机制特点:[/b]\n"
+			for feature in features:
+				content_text += "  • " + feature + "\n"
+			content_text += "\n"
 	
 	detail_content.text = content_text
 

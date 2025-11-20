@@ -425,6 +425,7 @@ func _effect_terrain_change(effect: Dictionary, source_sprite: Sprite, target: V
 	var set_height: int = effect.get("set_height", -1)
 	var height_delta: int = effect.get("height_delta", 0)
 	
+	print("CardSpriteInterface: _effect_terrain_change - 坐标: ", hex_coord, " 高度变化: ", height_delta, " 设置高度: ", set_height, " 当前请求数量: ", terrain_manager.terrain_change_requests.size())
 	terrain_manager.request_terrain_change(
 		source_sprite.owner_player_id,
 		hex_coord,
@@ -433,6 +434,7 @@ func _effect_terrain_change(effect: Dictionary, source_sprite: Sprite, target: V
 		duration,
 		height_delta
 	)
+	print("CardSpriteInterface: _effect_terrain_change 完成 - 坐标: ", hex_coord, " 请求数量: ", terrain_manager.terrain_change_requests.size())
 	
 	var msg_parts: Array[String] = []
 	if height_delta > 0:

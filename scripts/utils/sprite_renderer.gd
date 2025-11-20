@@ -3,7 +3,7 @@ extends Node3D
 
 # 精灵渲染器：用于在3D场景中渲染精灵
 
-var sprite_nodes: Dictionary = {}  # key: sprite实例, value: MeshInstance3D
+var sprite_nodes: Dictionary = {}  # key: sprite实例, value: Node3D (可能是MeshInstance3D或GLB场景实例)
 var sprite_tweens: Dictionary = {}  # key: sprite实例, value: Tween（用于移动动画）
 var sprite_connections: Dictionary = {}  # key: sprite实例, value: Callable（用于追踪和断开信号连接）
 var game_map: GameMap  # 地图引用，用于获取地图参数
@@ -30,16 +30,22 @@ func render_sprite(sprite: Sprite):
 		_update_sprite_position(sprite)
 		return
 	
-	# 创建新的精灵节点
-	var mesh_instance = MeshInstance3D.new()
+	print("SpriteRenderer: 开始渲染精灵 - 属性: ", sprite.attribute, ", 名称: ", sprite.sprite_name)
 	
-	# 根据精灵属性生成网格
-	var mesh = _get_sprite_mesh(sprite.attribute)
-	mesh_instance.mesh = mesh
+	# 尝试加载外部模型文件
+	var sprite_node: Node3D = _load_sprite_model(sprite.attribute)
 	
-	# 设置材质
-	var material = _create_sprite_material(sprite.attribute)
-	mesh_instance.material_override = material
+	# 如果没有外部模型，创建占位符
+	if not sprite_node:
+		print("SpriteRenderer: 模型加载失败，创建占位符 (属性: ", sprite.attribute, ")")
+		var mesh_instance = MeshInstance3D.new()
+		var mesh = _get_sprite_mesh(sprite.attribute)
+		mesh_instance.mesh = mesh
+		var material = _create_sprite_material(sprite.attribute)
+		mesh_instance.material_override = material
+		sprite_node = mesh_instance
+	else:
+		print("SpriteRenderer: 成功获取模型节点 (属性: ", sprite.attribute, ", 类型: ", sprite_node.get_class(), ")")
 	
 	# 更新所有精灵的布局（重新计算索引）
 	_update_all_sprites_layout()
@@ -64,10 +70,10 @@ func render_sprite(sprite: Sprite):
 		terrain_height = _get_terrain_height_for_level(terrain.height_level)
 	# 地形从Y=0开始，顶部在Y=terrain_height，精灵站在地形顶部
 	world_pos.y = terrain_height + 0.5  # 地形顶部 + 偏移，让精灵站在地形上
-	mesh_instance.position = world_pos
+	sprite_node.position = world_pos
 	
-	add_child(mesh_instance)
-	sprite_nodes[sprite] = mesh_instance
+	add_child(sprite_node)
+	sprite_nodes[sprite] = sprite_node
 	
 	# 应用迷雾效果
 	_update_sprite_fog_visibility(sprite)
@@ -82,7 +88,9 @@ func _update_sprite_position(sprite: Sprite):
 	if not sprite_nodes.has(sprite):
 		return
 	
-	var mesh_instance = sprite_nodes[sprite]
+	var sprite_node = sprite_nodes[sprite] as Node3D
+	if not sprite_node:
+		return
 	
 	# 更新所有精灵的布局（重新计算索引）
 	_update_all_sprites_layout()
@@ -109,7 +117,7 @@ func _update_sprite_position(sprite: Sprite):
 	# 地形从Y=0开始，顶部在Y=terrain_height，精灵站在地形顶部
 	var new_y = terrain_height + 0.5  # 地形顶部 + 偏移，让精灵站在地形上
 	world_pos.y = new_y
-	mesh_instance.position = world_pos
+	sprite_node.position = world_pos
 	
 	# 如果正在移动，停止之前的动画
 	if sprite_tweens.has(sprite):
@@ -127,7 +135,9 @@ func _on_sprite_moved(sprite: Sprite, from: Vector2i, to: Vector2i):
 		push_warning("SpriteRenderer: 精灵节点不存在，无法更新位置")
 		return
 	
-	var mesh_instance = sprite_nodes[sprite]
+	var sprite_node = sprite_nodes[sprite] as Node3D
+	if not sprite_node:
+		return
 	
 	# 停止之前的移动动画（如果有）
 	if sprite_tweens.has(sprite):
@@ -160,7 +170,7 @@ func _on_sprite_moved(sprite: Sprite, from: Vector2i, to: Vector2i):
 	target_pos.y = terrain_height + 0.5  # 地形顶部 + 偏移，让精灵站在地形上
 	
 	# 获取起始位置
-	var start_pos = mesh_instance.position
+	var start_pos = sprite_node.position
 	var start_y = start_pos.y
 	var peak_y = start_y + 0.3  # 跳跃高度
 	var end_y = target_pos.y
@@ -171,12 +181,12 @@ func _on_sprite_moved(sprite: Sprite, from: Vector2i, to: Vector2i):
 	
 	# 水平移动（XZ平面）
 	var horizontal_target = Vector3(target_pos.x, start_y, target_pos.z)
-	tween.tween_property(mesh_instance, "position:x", target_pos.x, move_animation_duration).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
-	tween.tween_property(mesh_instance, "position:z", target_pos.z, move_animation_duration).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+	tween.tween_property(sprite_node, "position:x", target_pos.x, move_animation_duration).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+	tween.tween_property(sprite_node, "position:z", target_pos.z, move_animation_duration).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
 	
 	# 垂直跳跃（Y轴）- 先上升后下降
-	tween.tween_property(mesh_instance, "position:y", peak_y, move_animation_duration * 0.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
-	tween.tween_property(mesh_instance, "position:y", end_y, move_animation_duration * 0.5).set_delay(move_animation_duration * 0.5).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	tween.tween_property(sprite_node, "position:y", peak_y, move_animation_duration * 0.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tween.tween_property(sprite_node, "position:y", end_y, move_animation_duration * 0.5).set_delay(move_animation_duration * 0.5).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 	
 	# 存储 tween 以便后续可以停止
 	sprite_tweens[sprite] = tween
@@ -225,8 +235,97 @@ func remove_sprite(sprite: Sprite):
 		if s.is_alive:
 			_update_sprite_position(s)
 
-# 获取精灵网格
+# 加载精灵模型（优先加载外部GLB文件）
+func _load_sprite_model(attribute: String) -> Node3D:
+	print("SpriteRenderer: [DEBUG] 开始加载模型 (属性: ", attribute, ")")
+	
+	var sprite_data = _get_sprite_data_for_attribute(attribute)
+	if not sprite_data or sprite_data.is_empty():
+		push_warning("SpriteRenderer: 未找到属性 " + attribute + " 的精灵数据")
+		return null
+	
+	if not sprite_data.has("model_path"):
+		push_warning("SpriteRenderer: 属性 " + attribute + " 的精灵数据中没有 model_path 字段")
+		return null
+	
+	var model_path = sprite_data["model_path"]
+	if not model_path or model_path.is_empty():
+		push_warning("SpriteRenderer: 属性 " + attribute + " 的 model_path 为空")
+		return null
+	
+	print("SpriteRenderer: [DEBUG] 模型路径: ", model_path)
+	
+	# 首先尝试配置的路径
+	if ResourceLoader.exists(model_path):
+		print("SpriteRenderer: [DEBUG] 模型文件存在，开始加载...")
+		var model_scene = load(model_path)
+		if model_scene:
+			print("SpriteRenderer: [DEBUG] 模型资源加载成功，类型: ", model_scene.get_class())
+			var instance = _instantiate_model_scene(model_scene, model_path)
+			if instance:
+				print("SpriteRenderer: ✓ 成功加载模型: ", model_path, " (属性: ", attribute, ")")
+				return instance
+			else:
+				push_warning("SpriteRenderer: ✗ 无法实例化模型: " + model_path)
+		else:
+			push_warning("SpriteRenderer: ✗ 无法加载模型文件: " + model_path)
+	else:
+		print("SpriteRenderer: [DEBUG] 主模型文件不存在: ", model_path)
+		# 如果主文件不存在，尝试查找备用文件（带_shaded后缀）
+		var base_path = model_path.get_basename()
+		var alt_path = base_path + "_shaded.glb"
+		print("SpriteRenderer: [DEBUG] 尝试备用路径: ", alt_path)
+		if ResourceLoader.exists(alt_path):
+			print("SpriteRenderer: [DEBUG] 备用模型文件存在，开始加载...")
+			var model_scene = load(alt_path)
+			if model_scene:
+				print("SpriteRenderer: [DEBUG] 备用模型资源加载成功，类型: ", model_scene.get_class())
+				var instance = _instantiate_model_scene(model_scene, alt_path)
+				if instance:
+					print("SpriteRenderer: ✓ 使用备用模型文件: ", alt_path, " (属性: ", attribute, ")")
+					return instance
+				else:
+					push_warning("SpriteRenderer: ✗ 无法实例化备用模型: " + alt_path)
+			else:
+				push_warning("SpriteRenderer: ✗ 无法加载备用模型文件: " + alt_path)
+		else:
+			push_warning("SpriteRenderer: ✗ 模型文件不存在: " + model_path + " 和 " + alt_path)
+	
+	# 返回null表示没有外部模型，将使用占位符
+	print("SpriteRenderer: ⚠ 使用占位符模型 (属性: ", attribute, ")")
+	return null
+
+# 实例化模型场景
+func _instantiate_model_scene(model_scene: Resource, model_path: String) -> Node3D:
+	if model_scene is PackedScene:
+		var instance = model_scene.instantiate()
+		if instance:
+			if instance is Node3D:
+				# 确保模型在原点，方便后续定位
+				instance.position = Vector3.ZERO
+				return instance
+			else:
+				# 如果不是Node3D，尝试查找第一个Node3D子节点
+				var node3d = _find_node3d(instance)
+				if node3d:
+					# 将Node3D从原场景中移除，作为根节点
+					var parent = node3d.get_parent()
+					if parent:
+						parent.remove_child(node3d)
+					instance.queue_free()
+					return node3d
+				else:
+					push_warning("SpriteRenderer: 模型场景中没有找到Node3D节点: " + model_path)
+					instance.queue_free()
+		else:
+			push_warning("SpriteRenderer: 无法实例化模型场景: " + model_path)
+	else:
+		push_warning("SpriteRenderer: 模型文件不是PackedScene: " + model_path)
+	return null
+
+# 获取精灵网格（用于占位符）
 func _get_sprite_mesh(attribute: String) -> ArrayMesh:
+	# 回退到程序生成的占位符
 	match attribute:
 		"fire":
 			return ModelGenerator.create_sprite_mesh_fire()
@@ -238,6 +337,57 @@ func _get_sprite_mesh(attribute: String) -> ArrayMesh:
 			return ModelGenerator.create_sprite_mesh_rock()
 		_:
 			return ModelGenerator.create_box_mesh(0.5, 0.5, 0.5)
+
+# 辅助函数：从场景中查找 Node3D
+func _find_node3d(node: Node) -> Node3D:
+	if node is Node3D:
+		return node
+	for child in node.get_children():
+		var result = _find_node3d(child)
+		if result:
+			return result
+	return null
+
+# 辅助函数：获取对应属性的精灵数据
+func _get_sprite_data_for_attribute(attribute: String) -> Dictionary:
+	# 需要从 sprite_data.json 加载数据
+	var sprite_data_file = "res://resources/data/sprite_data.json"
+	
+	if not ResourceLoader.exists(sprite_data_file):
+		push_warning("SpriteRenderer: JSON文件不存在: " + sprite_data_file)
+		return {}
+	
+	var file = FileAccess.open(sprite_data_file, FileAccess.READ)
+	if not file:
+		push_warning("SpriteRenderer: 无法打开JSON文件: " + sprite_data_file)
+		return {}
+	
+	var json_string = file.get_as_text()
+	file.close()
+	
+	if json_string.is_empty():
+		push_warning("SpriteRenderer: JSON文件为空: " + sprite_data_file)
+		return {}
+	
+	var json = JSON.new()
+	var parse_result = json.parse(json_string)
+	
+	if parse_result != OK:
+		push_warning("SpriteRenderer: JSON解析失败: " + sprite_data_file + ", 错误: " + str(parse_result))
+		return {}
+	
+	var data = json.data
+	if not data.has("sprites"):
+		push_warning("SpriteRenderer: JSON数据中没有 'sprites' 字段")
+		return {}
+	
+	for sprite in data["sprites"]:
+		if sprite.get("attribute") == attribute:
+			print("SpriteRenderer: 找到精灵数据 (属性: ", attribute, ", model_path: ", sprite.get("model_path", "无"), ")")
+			return sprite
+	
+	push_warning("SpriteRenderer: 未找到属性 " + attribute + " 的精灵数据")
+	return {}
 
 # 创建精灵材质
 func _create_sprite_material(attribute: String) -> StandardMaterial3D:
@@ -302,21 +452,24 @@ func _update_sprite_fog_visibility(sprite: Sprite):
 	if not sprite_nodes.has(sprite):
 		return
 	
-	var mesh_instance = sprite_nodes[sprite]
+	var sprite_node = sprite_nodes[sprite] as Node3D
+	if not sprite_node:
+		return
+	
 	if not fog_enabled:
-		mesh_instance.visible = true
+		sprite_node.visible = true
 		return
 	
 	if not fog_of_war_manager or current_player_id < 0:
 		# 没有迷雾系统，显示所有精灵
-		mesh_instance.visible = true
+		sprite_node.visible = true
 		return
 	
 	# 检查精灵位置是否对当前玩家可见
 	# 己方精灵始终可见，敌方精灵只有在视野内才可见
 	if sprite.owner_player_id == current_player_id:
 		# 己方精灵：始终可见
-		mesh_instance.visible = true
+		sprite_node.visible = true
 	else:
 		# 敌方精灵：使用新的可见性检查（考虑森林隐藏）
 		var observer_sprites: Array[Sprite] = []
@@ -325,7 +478,7 @@ func _update_sprite_fog_visibility(sprite: Sprite):
 				observer_sprites.append(s)
 		
 		var is_visible = fog_of_war_manager.is_sprite_visible_to_player(sprite, current_player_id, observer_sprites, game_map)
-		mesh_instance.visible = is_visible
+		sprite_node.visible = is_visible
 
 # 获取指定六边形的所有精灵
 func _get_sprites_at_hex(hex_coord: Vector2i) -> Array[Sprite]:
@@ -393,9 +546,9 @@ func update_all_sprite_positions():
 		if sprite.is_alive:
 			_update_sprite_position(sprite)
 
-func get_sprite_node(sprite: Sprite) -> MeshInstance3D:
+func get_sprite_node(sprite: Sprite) -> Node3D:
 	if sprite_nodes.has(sprite):
-		return sprite_nodes[sprite]
+		return sprite_nodes[sprite] as Node3D
 	return null
 
 # 更新所有精灵的布局（重新计算每个位置的精灵索引）

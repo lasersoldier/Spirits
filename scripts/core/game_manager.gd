@@ -606,6 +606,13 @@ func _resolve_round():
 	# 结算所有行动
 	action_resolver.resolve_all_actions()
 	
+	# 确保所有地形变化请求都已处理（包括延迟添加的请求）
+	# 这很重要：如果地形变化请求在行动结算后仍然存在，需要立即处理
+	# 这样下一个回合开始时，地形已经是正确的状态
+	if terrain_manager and terrain_manager.terrain_change_requests.size() > 0:
+		print("GameManager: 回合结算后仍有 ", terrain_manager.terrain_change_requests.size(), " 个地形变化请求，立即处理")
+		terrain_manager.resolve_terrain_changes()
+	
 	# 争夺赏金
 	contest_point_manager.contest_bounty(all_sprites)
 	_update_bounty_status_ui()

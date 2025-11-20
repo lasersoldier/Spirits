@@ -96,9 +96,23 @@ func resolve_all_actions():
 	
 	# 按优先级顺序结算
 	_resolve_actions(effect_actions)
+	
+	# 执行地形行动（这会添加地形变化请求到队列）
+	print("ActionResolver: 开始执行地形行动，数量: ", terrain_actions.size(), " 当前地形变化请求数量: ", terrain_manager.terrain_change_requests.size())
 	_resolve_actions(terrain_actions)
+	print("ActionResolver: 地形行动执行完成，当前地形变化请求数量: ", terrain_manager.terrain_change_requests.size())
+	
 	# 地形变化执行后，立即应用到地图（这样后续的移动可以正确检查路径高度）
+	print("ActionResolver: 开始应用地形变化（在移动之前），地形变化请求数量: ", terrain_manager.terrain_change_requests.size())
 	terrain_manager.resolve_terrain_changes()
+	print("ActionResolver: 地形变化已应用，开始执行移动")
+	# 验证关键位置的地形高度（用于调试）
+	for action in move_actions:
+		if action.target is Vector2i:
+			var target_pos = action.target as Vector2i
+			var target_terrain = game_map.get_terrain(target_pos)
+			if target_terrain:
+				print("ActionResolver: 移动目标位置 ", target_pos, " 地形高度: ", target_terrain.height_level)
 	# 注意：水流传播不在回合中处理，只在回合开始时统一处理
 	# 这样可以避免每回合多次清除和扩散，减少性能开销
 	_resolve_actions(attack_actions)
@@ -154,7 +168,9 @@ func _resolve_terrain_action(action: Action) -> Dictionary:
 	if not action.card or not action.target is Vector2i:
 		return {"success": false, "message": "无效的地形行动"}
 	
+	print("ActionResolver: 开始结算地形行动 - 卡牌: ", action.card.card_name, " 目标: ", action.target, " 当前地形变化请求数量: ", terrain_manager.terrain_change_requests.size())
 	var result = _queue_card_effect(action.card, action.sprite, action.target)
+	print("ActionResolver: 地形行动结算完成 - 结果: ", result.success, " 当前地形变化请求数量: ", terrain_manager.terrain_change_requests.size())
 	
 	# 消耗能量
 	if result.success:
@@ -208,6 +224,44 @@ func _queue_card_effect(card: Card, source_sprite: Sprite, target: Variant) -> D
 	if not card:
 		return {"success": false, "message": "无效的卡牌"}
 	var timing = card.timing
+	
+	# 检查卡牌是否有地形变化效果
+	# 如果有地形变化效果，即使 timing 是 "start_of_next_turn"，也要立即应用地形变化
+	# 这样移动可以正确检查路径高度
+	var has_terrain_change = false
+	var terrain_effects: Array[Dictionary] = []
+	var other_effects: Array[Dictionary] = []
+	
+	if card.effects:
+		for effect in card.effects:
+			if effect.get("tag", "") == "terrain_change":
+				has_terrain_change = true
+				terrain_effects.append(effect)
+			else:
+				other_effects.append(effect)
+	
+	# 如果有地形变化效果，立即应用地形变化部分
+	if has_terrain_change and terrain_effects.size() > 0:
+		# 创建只包含地形变化效果的临时卡牌，立即应用
+		var terrain_card = card.duplicate_card()
+		terrain_card.effects = terrain_effects
+		var terrain_result = card_interface.apply_card_effect(terrain_card, source_sprite, target, game_map, terrain_manager, sprite_pool)
+		
+		# 如果有其他效果且 timing 是 "start_of_next_turn"，延迟应用其他效果
+		if other_effects.size() > 0 and (timing == "start_of_next_turn" or timing == "") and delayed_effect_manager:
+			var other_card = card.duplicate_card()
+			other_card.effects = other_effects
+			delayed_effect_manager.queue_card_effect(other_card, source_sprite, target)
+			return {"success": terrain_result.success, "message": "地形变化已生效，其他效果将在下回合初生效"}
+		
+		# 如果有其他效果且 timing 不是延迟，立即应用所有效果
+		if other_effects.size() > 0:
+			var other_result = card_interface.apply_card_effect(card, source_sprite, target, game_map, terrain_manager, sprite_pool)
+			return other_result
+		else:
+			return terrain_result
+	
+	# 如果没有地形变化效果，按原来的逻辑处理
 	if (timing == "start_of_next_turn" or timing == "") and delayed_effect_manager:
 		delayed_effect_manager.queue_card_effect(card, source_sprite, target)
 		return {"success": true, "message": "效果将在下回合初生效"}
@@ -258,8 +312,20 @@ func _resolve_move_action(action: Action) -> Dictionary:
 
 # 执行移动（公共方法，可直接调用）
 func execute_move(sprite: Sprite, target_pos: Vector2i, is_basic_action: bool = false, player_id: int = -1, card: Card = null) -> Dictionary:
-	# 检查路径高度有效性
+	# 检查路径高度有效性（使用最新的地形数据）
+	# 确保地形变化已经应用到地图
+	var start_terrain = game_map.get_terrain(sprite.hex_position)
+	var target_terrain = game_map.get_terrain(target_pos)
+	var start_height = start_terrain.height_level if start_terrain else 1
+	var target_height = target_terrain.height_level if target_terrain else 1
+	print("执行移动: ", sprite.sprite_name, " 从 ", sprite.hex_position, " (高度", start_height, ") 到 ", target_pos, " (高度", target_height, ")")
+	
 	var path_check = terrain_manager.check_path_height_validity(sprite, sprite.hex_position, target_pos)
+	
+	# 调试信息：打印路径检查结果
+	if not path_check.valid:
+		print("执行移动路径检查失败: ", sprite.sprite_name, " 从 ", sprite.hex_position, " (高度", start_height, ") 到 ", target_pos, " (高度", target_height, ")")
+		print("  最终位置: ", path_check.final_position, " 被阻挡位置: ", path_check.blocked_at)
 	
 	# 确定实际移动目标（如果路径被阻挡，使用最后一个有效位置）
 	var actual_target_pos = path_check.final_position

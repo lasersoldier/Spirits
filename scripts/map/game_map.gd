@@ -403,13 +403,19 @@ func modify_terrain(hex_coord: Vector2i, new_type: TerrainTile.TerrainType, new_
 			# 如果已经是水源，即使高度降到1也保持水源标记
 			# （is_water_source 一旦设置为 true 就不会被清除）
 		
+		var old_height = terrain.height_level
 		terrain.terrain_type = new_type
 		terrain.height_level = final_height
 		if duration >= 0:
 			terrain.effect_duration = duration
 		
+		print("GameMap: 立即更新地形 - 坐标: ", hex_coord, " 从高度 ", old_height, " 改为高度 ", final_height)
 		# 触发地形变化信号，让渲染器更新
 		_set_terrain(hex_coord, terrain)
+		# 验证地形已更新
+		var verify_terrain = get_terrain(hex_coord)
+		if verify_terrain:
+			print("GameMap: 验证地形已更新 - 坐标: ", hex_coord, " 当前高度: ", verify_terrain.height_level)
 	
 	return true
 
