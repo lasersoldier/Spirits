@@ -6,6 +6,9 @@ var move_speed: float = 10.0
 
 # 摄像机高度（固定，只允许在XZ平面移动）
 var camera_height: float = 15.0
+var min_camera_height: float = 5.0   # 最小高度（最大缩放）
+var max_camera_height: float = 30.0   # 最大高度（最小缩放）
+var zoom_speed: float = 2.0           # 缩放速度
 
 # 摄像机固定旋转角度（斜向下看）
 var fixed_rotation: Vector3 = Vector3(-0.523599, 0, 0)  # 约30度向下
@@ -81,7 +84,7 @@ func _input(event):
 	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
 		reset_to_origin()
 	
-	# 处理鼠标右键旋转
+	# 处理鼠标按钮事件（右键旋转和滚轮缩放）
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
@@ -92,6 +95,14 @@ func _input(event):
 				# 右键释放，停止旋转
 				is_rotating = false
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE  # 释放鼠标
+		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			# 向前滚动，降低高度（放大）
+			camera_height = clamp(camera_height - zoom_speed, min_camera_height, max_camera_height)
+			position.y = camera_height
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			# 向后滚动，增加高度（缩小）
+			camera_height = clamp(camera_height + zoom_speed, min_camera_height, max_camera_height)
+			position.y = camera_height
 	
 	# 处理鼠标移动（旋转相机）
 	if event is InputEventMouseMotion and is_rotating:
