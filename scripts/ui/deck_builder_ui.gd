@@ -5,6 +5,7 @@ extends Control
 @onready var top_bar: Control = $TopBar
 @onready var title_label: Label = $TopBar/TitleLabel
 @onready var deck_count_label: Label = $TopBar/DeckCountLabel
+@onready var shards_label: Label = $TopBar/ShardsLabel
 @onready var save_button: Button = $TopBar/SaveButton
 @onready var back_button: Button = $TopBar/BackButton
 
@@ -57,6 +58,9 @@ func _ready():
 	if clear_deck_button:
 		clear_deck_button.pressed.connect(_on_clear_deck_pressed)
 	
+	# 启用ESC键处理
+	set_process_unhandled_input(true)
+	
 	# 创建过滤器按钮
 	_create_filter_buttons()
 	
@@ -64,6 +68,7 @@ func _ready():
 	_refresh_collection_grid()
 	_refresh_deck_list()
 	_update_deck_count()
+	_update_shards_display()
 	_update_deck_action_buttons()
 
 # 创建过滤器按钮
@@ -233,6 +238,12 @@ func _update_deck_count():
 		else:
 			deck_count_label.modulate = Color(1.0, 0.65, 0.0)  # 琥珀色
 
+# 更新碎片显示
+func _update_shards_display():
+	if shards_label:
+		var shards = player_data_manager.get_shards()
+		shards_label.text = "碎片: " + str(shards)
+
 # 套牌列表项选中
 func _on_deck_item_selected(index: int):
 	if deck_list:
@@ -288,6 +299,12 @@ func _on_save_button_pressed():
 # 返回主菜单
 func _on_back_button_pressed():
 	get_tree().change_scene_to_file("res://scenes/ui/main_menu.tscn")
+
+# ESC键处理
+func _unhandled_input(event: InputEvent):
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE and not event.echo:
+		_on_back_button_pressed()
+		get_viewport().set_input_as_handled()
 
 # 递归设置所有子节点的 mouse_filter 为 IGNORE
 func _set_all_children_mouse_filter_ignore(node: Node):

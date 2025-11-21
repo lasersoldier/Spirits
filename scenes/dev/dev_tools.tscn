@@ -1,0 +1,149 @@
+[gd_scene load_steps=2 format=3 uid="uid://dev_tools"]
+
+[ext_resource type="Script" path="res://scripts/dev/dev_tools.gd" id="1_dev_tools"]
+
+[node name="DevTools" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_dev_tools")
+
+[node name="TopBar" type="HBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.0
+anchor_right = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 72.0
+grow_horizontal = 2
+theme_override_constants/separation = 12
+
+[node name="BackButton" type="Button" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(140, 44)
+text = "返回主菜单"
+
+[node name="TitleLabel" type="Label" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "开发者工具"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 20
+
+[node name="MainContainer" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_top = 72.0
+theme_override_constants/separation = 16
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MainContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="GoldContainer" type="HBoxContainer" parent="MainContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="GoldLabel" type="Label" parent="MainContainer/VBoxContainer/GoldContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+custom_minimum_size = Vector2(100, 0)
+text = "金币:"
+vertical_alignment = 1
+
+[node name="GoldInput" type="LineEdit" parent="MainContainer/VBoxContainer/GoldContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(200, 0)
+placeholder_text = "输入金币数量"
+
+[node name="GoldSetButton" type="Button" parent="MainContainer/VBoxContainer/GoldContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+custom_minimum_size = Vector2(100, 0)
+text = "设置"
+
+[node name="ShardsContainer" type="HBoxContainer" parent="MainContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ShardsLabel" type="Label" parent="MainContainer/VBoxContainer/ShardsContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+custom_minimum_size = Vector2(100, 0)
+text = "碎片:"
+vertical_alignment = 1
+
+[node name="ShardsInput" type="LineEdit" parent="MainContainer/VBoxContainer/ShardsContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(200, 0)
+placeholder_text = "输入碎片数量"
+
+[node name="ShardsSetButton" type="Button" parent="MainContainer/VBoxContainer/ShardsContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+custom_minimum_size = Vector2(100, 0)
+text = "设置"
+
+[node name="InitCardsContainer" type="HBoxContainer" parent="MainContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="InitAllCardsButton" type="Button" parent="MainContainer/VBoxContainer/InitCardsContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "初始化所有卡牌（各4张）"
+
+[node name="ClearCollectionButton" type="Button" parent="MainContainer/VBoxContainer/InitCardsContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "清空收藏"
+
+[node name="StatusLabel" type="Label" parent="MainContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 0
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 16
+
+[node name="CurrentDataLabel" type="Label" parent="MainContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 0
+text = "当前数据 - 金币: 0 | 碎片: 0 | 卡牌总数: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 14
+

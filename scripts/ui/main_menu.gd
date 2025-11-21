@@ -55,6 +55,8 @@ var button_tweens: Dictionary = {}  # 存储每个按钮的 tween
 # Lore 文本（可以后续连接 AI 服务）
 var lore_text: String = "Connecting to the ley lines..."
 
+var esc_menu: Control = null  # ESC菜单
+
 func _ready():
 	print("MainMenu: _ready() called")
 	print("MainMenu: menu_container path: ContentLayer/MenuArea/MenuContainer")
@@ -62,6 +64,7 @@ func _ready():
 	_setup_ui()
 	_connect_signals()
 	_load_lore()
+	set_process_unhandled_input(true)
 
 func _setup_ui():
 	# 设置标题
@@ -112,6 +115,18 @@ func _create_menu_buttons():
 		print("MainMenu: Button size: ", button.size)
 		print("MainMenu: Button position: ", button.position)
 		print("MainMenu: Button global position: ", button.get_global_rect())
+	
+	# 开发模式下添加开发者工具按钮
+	if OS.is_debug_build():
+		var dev_button = _create_menu_button({
+			"id": "dev_tools",
+			"label": "开发者工具",
+			"desc": "调试和修改游戏数据",
+			"scene": "res://scenes/dev/dev_tools.tscn"
+		})
+		menu_container.add_child(dev_button)
+		menu_buttons.append(dev_button)
+		print("MainMenu: Created dev tools button")
 	
 	print("MainMenu: Total buttons created: ", menu_buttons.size())
 	print("MainMenu: MenuContainer position: ", menu_container.position)
@@ -187,7 +202,8 @@ func _on_menu_item_hovered(label: String, desc: String):
 			if old_tween:
 				old_tween.kill()
 		
-		if menu_items[i].label == label:
+		# 检查是否是当前悬停的按钮（通过按钮文本匹配）
+		if button.text == label:
 			var tween = create_tween()
 			tween.tween_property(button, "modulate", Color(1.1, 1.1, 0.95, 1.0), 0.2)
 			button_tweens[button] = tween
@@ -237,6 +253,10 @@ func _on_menu_item_pressed(item: Dictionary):
 			scene_path = shop_scene
 		"settings_scene":
 			scene_path = settings_scene
+		_:
+			# 直接使用场景路径（如开发者工具）
+			if item.scene.begins_with("res://"):
+				scene_path = item.scene
 	
 	if scene_path.is_empty():
 		push_warning("MainMenu: Scene path is empty for " + item.label)
@@ -265,3 +285,101 @@ func _setup_footer():
 		pass
 	if footer_right:
 		footer_right.text = "UID: 114514"
+
+# ESC键处理
+func _unhandled_input(event: InputEvent):
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE and not event.echo:
+		if esc_menu and esc_menu.visible:
+			_close_esc_menu()
+		else:
+			_show_esc_menu()
+		get_viewport().set_input_as_handled()
+
+# 显示ESC菜单
+func _show_esc_menu():
+	if esc_menu:
+		esc_menu.queue_free()
+	
+	# 创建ESC菜单
+	esc_menu = Control.new()
+	esc_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	esc_menu.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(esc_menu)
+	
+	# 创建背景（半透明黑色）
+	var bg = ColorRect.new()
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0, 0, 0, 0.7)
+	esc_menu.add_child(bg)
+	
+	# 创建菜单面板
+	var panel = Panel.new()
+	panel.custom_minimum_size = Vector2(300, 200)
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	esc_menu.add_child(panel)
+	
+	# 创建按钮容器
+	var vbox = VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+	
+	# 添加标题
+	var title = Label.new()
+	title.text = "菜单"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 24)
+	vbox.add_child(title)
+	
+	# 添加设置按钮（占位）
+	var settings_btn = Button.new()
+	settings_btn.text = "设置（占位）"
+	settings_btn.custom_minimum_size = Vector2(0, 48)
+	settings_btn.pressed.connect(_on_esc_settings_pressed)
+	vbox.add_child(settings_btn)
+	
+	# 添加退出游戏按钮
+	var quit_btn = Button.new()
+	quit_btn.text = "退出游戏"
+	quit_btn.custom_minimum_size = Vector2(0, 48)
+	quit_btn.pressed.connect(_on_esc_quit_pressed)
+	vbox.add_child(quit_btn)
+	
+	# 添加取消按钮
+	var cancel_btn = Button.new()
+	cancel_btn.text = "取消"
+	cancel_btn.custom_minimum_size = Vector2(0, 48)
+	cancel_btn.pressed.connect(_close_esc_menu)
+	vbox.add_child(cancel_btn)
+	
+	# 设置按钮样式
+	for btn in [settings_btn, quit_btn, cancel_btn]:
+		var style = StyleBoxFlat.new()
+		style.bg_color = Color(0.2, 0.2, 0.25, 0.9)
+		style.border_color = Color(0.6, 0.6, 0.6, 0.8)
+		style.border_width_left = 2
+		style.border_width_top = 2
+		style.border_width_right = 2
+		style.border_width_bottom = 2
+		style.corner_radius_top_left = 8
+		style.corner_radius_top_right = 8
+		style.corner_radius_bottom_left = 8
+		style.corner_radius_bottom_right = 8
+		btn.add_theme_stylebox_override("normal", style)
+		btn.add_theme_font_size_override("font_size", 18)
+
+# 关闭ESC菜单
+func _close_esc_menu():
+	if esc_menu:
+		esc_menu.queue_free()
+		esc_menu = null
+
+# ESC菜单 - 设置按钮
+func _on_esc_settings_pressed():
+	_close_esc_menu()
+	# 占位：未来可以打开设置界面
+	print("设置功能待实现")
+
+# ESC菜单 - 退出游戏按钮
+func _on_esc_quit_pressed():
+	get_tree().quit()
