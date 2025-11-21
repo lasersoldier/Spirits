@@ -7,7 +7,37 @@ var card_library: CardLibrary
 func _init(library: CardLibrary):
 	card_library = library
 
-# 人类玩家构建卡组：手动构建30张卡组（从10张基础卡中重复组合）
+# 人类玩家构建卡组：使用玩家套牌
+func build_human_deck_from_player_deck(player_deck: PlayerDeck) -> Array[Card]:
+	var deck: Array[Card] = []
+	var deck_data = player_deck.get_deck_data()
+	
+	# 验证套牌
+	var validation = player_deck.validate_deck()
+	if not validation.get("valid", false):
+		push_warning("玩家套牌不合法: " + validation.get("message", ""))
+		# 如果套牌不合法，使用默认套牌
+		return build_default_human_deck()
+	
+	# 根据套牌数据构建卡组
+	for entry in deck_data:
+		var card_id = entry.get("card_id", "")
+		var count = entry.get("count", 0)
+		var card_data = card_library.get_card_data(card_id)
+		
+		if card_data.is_empty():
+			push_error("卡牌数据不存在: " + card_id)
+			continue
+		
+		for i in range(count):
+			var card = Card.new(card_data)
+			deck.append(card)
+	
+	# 打乱顺序
+	deck.shuffle()
+	return deck
+
+# 人类玩家构建卡组：手动构建（保留向后兼容）
 func build_human_deck(selected_cards: Dictionary) -> Array[Card]:
 	# selected_cards格式: {card_id: count, ...}
 	# 总数量应为30张
@@ -33,6 +63,29 @@ func build_human_deck(selected_cards: Dictionary) -> Array[Card]:
 			var card = Card.new(card_data)
 			deck.append(card)
 	
+	return deck
+
+# 构建默认人类卡组（当玩家没有套牌时使用）
+func build_default_human_deck() -> Array[Card]:
+	var deck: Array[Card] = []
+	var all_card_ids = card_library.get_all_card_ids()
+	
+	# 每种卡牌3张，共30张（如果卡牌数量不足，则重复）
+	var cards_per_type = 3
+	var total_needed = 30
+	var cards_added = 0
+	
+	while cards_added < total_needed:
+		for card_id in all_card_ids:
+			if cards_added >= total_needed:
+				break
+			var card_data = card_library.get_card_data(card_id)
+			if not card_data.is_empty():
+				var card = Card.new(card_data)
+				deck.append(card)
+				cards_added += 1
+	
+	deck.shuffle()
 	return deck
 
 # AI玩家构建卡组：按难度自动生成

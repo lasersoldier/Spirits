@@ -1,8 +1,12 @@
 class_name CardUI
-extends Panel
+extends Control
 
 # 卡牌引用
 var card: Card = null
+
+# 卡牌展示
+const CARD_FACE_SCENE := preload("res://scenes/ui/card_face.tscn")
+var card_face: CardFace
 
 # 游戏管理器引用（用于检查当前阶段）
 var game_manager: GameManager = null
@@ -24,25 +28,18 @@ signal card_right_drag_ended(card_ui: CardUI, card: Card, drop_position: Vector2
 signal card_right_clicked(card_ui: CardUI, card: Card)
 
 func _ready():
-	# 设置鼠标输入
 	mouse_filter = MOUSE_FILTER_STOP
-	# 确保裁剪超出内容
-	clip_contents = true
-	# 设置样式，让卡牌看起来可点击
-	var style_box = StyleBoxFlat.new()
-	style_box.bg_color = Color(0.2, 0.2, 0.3, 0.9)
-	style_box.border_color = Color(0.5, 0.5, 0.7, 1.0)
-	style_box.border_width_left = 2
-	style_box.border_width_top = 2
-	style_box.border_width_right = 2
-	style_box.border_width_bottom = 2
-	style_box.corner_radius_top_left = 5
-	style_box.corner_radius_top_right = 5
-	style_box.corner_radius_bottom_left = 5
-	style_box.corner_radius_bottom_right = 5
-	add_theme_stylebox_override("panel", style_box)
-	# 监听全局输入，确保拖动时即使鼠标移出卡牌也能检测到释放
+	clip_contents = false
 	set_process_unhandled_input(true)
+	card_face = CARD_FACE_SCENE.instantiate()
+	card_face.set_selected(false)
+	add_child(card_face)
+	card_face.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_set_mouse_filter_recursive(card_face, Control.MOUSE_FILTER_IGNORE)
+	# CardFace 会在自己的 _ready 中把 mouse_filter 重置为 STOP，这里延迟一次确保它保持 IGNORE
+	call_deferred("_ensure_card_face_mouse_filter")
+	if card:
+		card_face.set_card(card)
 
 func _gui_input(event: InputEvent):
 	# 检查是否允许拖动（部署阶段禁用）
@@ -75,10 +72,6 @@ func _unhandled_input(event: InputEvent):
 			_end_right_drag(Vector2.ZERO)
 			get_viewport().set_input_as_handled()
 
-func _process(_delta):
-	if is_dragging or is_right_dragging:
-		_update_drag_position(Vector2.ZERO)
-
 func _start_drag(_mouse_pos: Vector2):
 	# 检查是否允许拖动
 	if not can_drag:
@@ -94,12 +87,6 @@ func _start_drag(_mouse_pos: Vector2):
 	set_process(true)
 	# 发出拖动开始信号（不移动卡牌，而是显示箭头）
 	card_drag_started.emit(self, card)
-
-func _update_drag_position(_mouse_pos: Vector2):
-	if not is_dragging:
-		return
-	# 卡牌不移动，只是更新箭头位置
-	# 通过信号通知主UI更新箭头
 
 func _end_drag(_mouse_pos: Vector2):
 	if not is_dragging:
@@ -141,6 +128,18 @@ func _end_right_drag(_mouse_pos: Vector2):
 
 func set_card(c: Card):
 	card = c
+	if card_face:
+		card_face.set_card(card)
+
+func _ensure_card_face_mouse_filter():
+	if card_face:
+		_set_mouse_filter_recursive(card_face, Control.MOUSE_FILTER_IGNORE)
+
+func _set_mouse_filter_recursive(node: Node, mode: int):
+	if node is Control:
+		node.mouse_filter = mode
+	for child in node.get_children():
+		_set_mouse_filter_recursive(child, mode)
 
 # 设置游戏管理器引用
 func set_game_manager(gm: GameManager):
@@ -158,6 +157,8 @@ func _update_drag_state():
 	
 	# 更新卡牌外观（禁用时变灰）
 	if not can_drag:
-		modulate = Color(0.6, 0.6, 0.6, 0.8)  # 变灰且半透明
+		if card_face:
+			card_face.set_disabled(true)
 	else:
-		modulate = Color.WHITE  # 恢复正常
+		if card_face:
+			card_face.set_disabled(false)

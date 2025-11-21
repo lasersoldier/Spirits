@@ -4,7 +4,8 @@ extends Control
 # 场景路径
 @export_file("*.tscn") var single_player_scene: String = "res://scenes/main.tscn"
 @export_file("*.tscn") var training_scene: String = "res://scenes/training.tscn"
-@export_file("*.tscn") var deck_scene: String = ""  # 卡组管理场景（待实现）
+@export_file("*.tscn") var deck_scene: String = "res://scenes/ui/deck_builder_ui.tscn"  # 卡组管理场景
+@export_file("*.tscn") var shop_scene: String = "res://scenes/ui/card_pack_ui.tscn"  # 商店/开卡包场景
 @export_file("*.tscn") var settings_scene: String = ""  # 设置场景（待实现）
 
 # UI 节点引用
@@ -31,6 +32,18 @@ var menu_items: Array[Dictionary] = [
 		"label": "训练场",
 		"desc": "磨练你的技能",
 		"scene": "training_scene"
+	},
+	{
+		"id": "deck",
+		"label": "卡组管理",
+		"desc": "构建和管理你的套牌",
+		"scene": "deck_scene"
+	},
+	{
+		"id": "shop",
+		"label": "商店",
+		"desc": "开启卡包，获得新卡牌",
+		"scene": "shop_scene"
 	}
 ]
 
@@ -220,6 +233,8 @@ func _on_menu_item_pressed(item: Dictionary):
 			scene_path = training_scene
 		"deck_scene":
 			scene_path = deck_scene
+		"shop_scene":
+			scene_path = shop_scene
 		"settings_scene":
 			scene_path = settings_scene
 	

@@ -1,6 +1,8 @@
 class_name MainUI
 extends Control
 
+const PAUSE_MENU_SCENE: PackedScene = preload("res://scenes/ui/pause_menu.tscn")
+
 # UI节点引用
 @onready var map_viewport: SubViewportContainer
 @onready var sprite_status_panel: Panel
@@ -86,6 +88,7 @@ var current_overlapping_sprites: Array[Sprite] = []
 var pending_card: Card = null  # 等待选择精灵的卡牌
 var pending_card_is_right_drag: bool = false  # 是否是右键拖拽
 var player_energy_display: Dictionary = {}
+var pause_menu: PauseMenu = null
 
 func _ready():
 	# 初始化UI节点
@@ -159,6 +162,14 @@ func _input(event: InputEvent):
 			_exit_card_use_phase()
 			get_viewport().set_input_as_handled()
 			return
+	
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE and not event.echo:
+		if pause_menu and is_instance_valid(pause_menu):
+			_close_pause_menu()
+		else:
+			_open_pause_menu()
+		get_viewport().set_input_as_handled()
+		return
 
 # 设置游戏管理器引用
 func set_game_manager(gm: GameManager):
@@ -2362,3 +2373,28 @@ func _enable_end_turn_button(round_num: int):
 		end_turn_button.disabled = false
 		end_turn_button.visible = true
 		print("回合开始，启用回合结束按钮 - 回合: ", round_num)
+
+func _open_pause_menu():
+	if not PAUSE_MENU_SCENE:
+		return
+	if pause_menu and is_instance_valid(pause_menu):
+		pause_menu.open()
+		return
+	pause_menu = PAUSE_MENU_SCENE.instantiate()
+	pause_menu.resume_requested.connect(_on_pause_menu_resume)
+	pause_menu.main_menu_requested.connect(_on_pause_menu_main_menu)
+	add_child(pause_menu)
+	pause_menu.open()
+
+func _close_pause_menu():
+	if pause_menu and is_instance_valid(pause_menu):
+		pause_menu.close()
+		pause_menu.queue_free()
+	pause_menu = null
+
+func _on_pause_menu_resume():
+	_close_pause_menu()
+
+func _on_pause_menu_main_menu():
+	_close_pause_menu()
+	get_tree().change_scene_to_file("res://scenes/ui/main_menu.tscn")

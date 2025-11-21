@@ -1,0 +1,127 @@
+[gd_scene load_steps=2 format=3 uid="uid://deck_builder_ui"]
+
+[ext_resource type="Script" path="res://scripts/ui/deck_builder_ui.gd" id="1_deck_builder"]
+
+[node name="DeckBuilderUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_deck_builder")
+
+[node name="TopBar" type="HBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.0
+anchor_right = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 72.0
+grow_horizontal = 2
+theme_override_constants/separation = 16
+
+[node name="BackButton" type="Button" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(140, 44)
+text = "返回主菜单"
+
+[node name="TitleLabel" type="Label" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Spirit Deck"
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 20
+
+[node name="DeckCountLabel" type="Label" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+text = "0/36"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SaveButton" type="Button" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+custom_minimum_size = Vector2(120, 44)
+text = "保存"
+
+[node name="MainContainer" type="HSplitContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_top = 72.0
+split_offset = 1200
+
+[node name="LeftPanel" type="VBoxContainer" parent="MainContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="FilterContainer" type="HBoxContainer" parent="MainContainer/LeftPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="CollectionScroll" type="ScrollContainer" parent="MainContainer/LeftPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+size_flags_horizontal = 3
+scroll_vertical = true
+scroll_horizontal = false
+
+[node name="CollectionGrid" type="GridContainer" parent="MainContainer/LeftPanel/CollectionScroll"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+columns = 4
+
+[node name="RightPanel" type="VBoxContainer" parent="MainContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="TitleLabel" type="Label" parent="MainContainer/RightPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Current Loadout"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DeckList" type="ItemList" parent="MainContainer/RightPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="DeckButtonBar" type="HBoxContainer" parent="MainContainer/RightPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="RemoveCardButton" type="Button" parent="MainContainer/RightPanel/DeckButtonBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "移除选中"
+
+[node name="ClearDeckButton" type="Button" parent="MainContainer/RightPanel/DeckButtonBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "清空套牌"

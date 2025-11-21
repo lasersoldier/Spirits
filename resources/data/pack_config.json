@@ -1,0 +1,13 @@
+{
+  "pack_types": [
+    {
+      "id": "standard",
+      "name": "标准卡包",
+      "card_count": 5,
+      "common_count": 4,
+      "rare_count": 1,
+      "guaranteed_rare": true
+    }
+  ]
+}
+

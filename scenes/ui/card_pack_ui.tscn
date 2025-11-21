@@ -1,0 +1,163 @@
+[gd_scene load_steps=2 format=3 uid="uid://card_pack_ui"]
+
+[ext_resource type="Script" path="res://scripts/ui/card_pack_ui.gd" id="1_card_pack"]
+
+[node name="CardPackUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_card_pack")
+
+[node name="TopBar" type="HBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 72.0
+grow_horizontal = 2
+z_index = 10
+theme_override_constants/separation = 12
+
+[node name="BackButton" type="Button" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(140, 44)
+text = "返回主菜单"
+
+[node name="StatusLabel" type="Label" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="CenterContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_top = 72.0
+theme_override_constants/separation = 16
+
+[node name="TopSpacer" type="Control" parent="CenterContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 48)
+
+[node name="PackStage" type="VBoxContainer" parent="CenterContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 480)
+size_flags_vertical = 3
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="PackCardContainer" type="CenterContainer" parent="CenterContainer/PackStage"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 1
+size_flags_horizontal = 3
+
+[node name="PackCard" type="Panel" parent="CenterContainer/PackStage/PackCardContainer"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+custom_minimum_size = Vector2(280, 420)
+mouse_filter = 0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/PackStage/PackCardContainer/PackCard"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 1
+
+[node name="Label" type="Label" parent="CenterContainer/PackStage/PackCardContainer/PackCard/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "OPEN PACK"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 24
+
+[node name="SubtitleLabel" type="Label" parent="CenterContainer/PackStage/PackCardContainer/PackCard/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Season of Flame"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 12
+
+[node name="OpeningAnimation" type="Control" parent="CenterContainer/PackStage"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -128.0
+offset_top = -128.0
+offset_right = 128.0
+offset_bottom = 128.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="GlowRect" type="ColorRect" parent="CenterContainer/PackStage/OpeningAnimation"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(1, 1, 1, 0.5)
+
+[node name="IconContainer" type="Control" parent="CenterContainer/PackStage/OpeningAnimation"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="CardDisplayContainer" type="GridContainer" parent="CenterContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+columns = 5
+
+[node name="ButtonBar" type="HBoxContainer" parent="CenterContainer"]
+layout_mode = 2
+
+[node name="OpenAnotherButton" type="Button" parent="CenterContainer/ButtonBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 48)
+text = "再开一包"

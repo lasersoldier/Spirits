@@ -57,6 +57,11 @@ var state_sync: SpriteStateSyncInterface
 var fog_of_war_manager: FogOfWarManager
 var main_ui: MainUI = null
 
+# 玩家数据系统
+var player_data_manager: PlayerDataManager
+var player_collection: PlayerCollection
+var player_deck: PlayerDeck
+
 # 所有精灵列表
 var all_sprites: Array[Sprite] = []
 
@@ -111,6 +116,11 @@ func _initialize_systems():
 	
 	# 初始化部署系统
 	sprite_deploy = SpriteDeployInterface.new(sprite_library, game_map)
+	
+	# 初始化玩家数据系统
+	player_data_manager = PlayerDataManager.new()
+	player_collection = PlayerCollection.new(player_data_manager)
+	player_deck = PlayerDeck.new(player_data_manager, player_collection)
 	
 	# 初始化卡组构建器
 	deck_builder = DeckBuilder.new(card_library)
@@ -185,24 +195,12 @@ func _build_all_decks():
 	
 	for player_id in range(PLAYER_COUNT):
 		if player_id == HUMAN_PLAYER_ID:
-			player_decks[player_id] = _build_default_human_deck()
+			# 使用玩家套牌构建人类玩家卡组
+			player_decks[player_id] = deck_builder.build_human_deck_from_player_deck(player_deck)
 		else:
+			# AI玩家仍使用预设套牌
 			var difficulty = _get_ai_difficulty(player_id)
 			player_decks[player_id] = deck_builder.build_ai_deck(difficulty, player_id)
-
-# 构建默认人类卡组（简化版）
-func _build_default_human_deck() -> Array[Card]:
-	var deck: Array[Card] = []
-	var all_card_ids = card_library.get_all_card_ids()
-	
-	# 每种卡牌3张，共30张
-	for card_id in all_card_ids:
-		for i in range(3):
-			var card_data = card_library.get_card_data(card_id)
-			deck.append(Card.new(card_data))
-	
-	deck.shuffle()
-	return deck
 
 func _get_ai_difficulty(player_id: int) -> String:
 	match player_id:

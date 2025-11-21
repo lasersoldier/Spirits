@@ -10,6 +10,9 @@ var card_name: String = ""
 # 属性组合
 var attributes: Array[String] = []
 
+# 稀有度
+var rarity: String = "common"  # common, rare
+
 # 消耗能量
 var energy_cost: int = 0
 
@@ -59,6 +62,7 @@ func _load_from_data(data: Dictionary):
 	attributes = []
 	for attr in attrs_raw:
 		attributes.append(attr as String)
+	rarity = data.get("rarity", "common")
 	energy_cost = data.get("energy_cost", 0)
 	card_type = data.get("type", "")
 	effect_description = data.get("effect", "")
@@ -108,6 +112,7 @@ func duplicate_card() -> Card:
 	new_card.card_id = card_id
 	new_card.card_name = card_name
 	new_card.attributes = attributes.duplicate()
+	new_card.rarity = rarity
 	new_card.energy_cost = energy_cost
 	new_card.card_type = card_type
 	new_card.effect_description = effect_description

@@ -341,6 +341,11 @@ func _show_card_details(card_name: String):
 			attr_names.append(attr_name)
 		content_text += "、".join(attr_names) + "\n\n"
 	
+	# 稀有度
+	var rarity = card_info.get("rarity", "common")
+	var rarity_text = "普通" if rarity == "common" else "稀有"
+	content_text += "[b]稀有度:[/b] " + rarity_text + "\n\n"
+	
 	# 能量消耗
 	var energy_cost = card_info.get("energy_cost", 0)
 	content_text += "[b]能量消耗:[/b] " + str(energy_cost) + "\n\n"

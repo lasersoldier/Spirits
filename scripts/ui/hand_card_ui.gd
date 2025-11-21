@@ -81,18 +81,10 @@ func _create_card_uis(cards: Array[Card]):
 func _create_card_ui(card: Card) -> Control:
 	var card_ui = CardUI.new()
 	card_ui.set_card(card)
+	card_ui.custom_minimum_size = Vector2(140, 220)
 	# 设置游戏管理器引用（用于检查阶段）
 	if game_manager:
 		card_ui.set_game_manager(game_manager)
-	# 固定卡牌尺寸（不使用缩放，直接使用像素值）
-	var card_width = 120
-	var card_height = 200  # 固定高度200，确保在屏幕内
-	card_ui.custom_minimum_size = Vector2(card_width, card_height)
-	card_ui.size = Vector2(card_width, card_height)
-	# 不使用UIScaleManager缩放，直接设置固定大小
-	# 允许描述文字换行显示，不裁剪超出内容
-	card_ui.clip_contents = false
-	
 	# 连接拖动信号（转发给MainUI）
 	card_ui.card_drag_started.connect(_on_card_drag_started)
 	card_ui.card_drag_ended.connect(_on_card_drag_ended)
@@ -100,77 +92,7 @@ func _create_card_ui(card: Card) -> Control:
 	# 连接右键拖拽信号（弃牌行动）
 	card_ui.card_right_drag_started.connect(_on_card_right_drag_started)
 	card_ui.card_right_drag_ended.connect(_on_card_right_drag_ended)
-	
-	# 使用固定像素值，不缩放
-	# 卡牌名称（顶部居中）
-	var name_label = Label.new()
-	name_label.text = card.card_name
-	name_label.position = Vector2(3, 3)
-	name_label.size = Vector2(card_width - 30, 22)  # 留出属性标识空间
-	name_label.add_theme_font_size_override("font_size", 14)
-	name_label.add_theme_color_override("font_color", Color.WHITE)
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_label.clip_contents = true
-	card_ui.add_child(name_label)
-	
-	# 属性标识（右上角小圆圈）
-	var attr_container = HBoxContainer.new()
-	attr_container.position = Vector2(card_width - 25, 5)
-	for i in range(card.attributes.size()):
-		var attr = card.attributes[i]
-		var attr_circle = ColorRect.new()
-		attr_circle.custom_minimum_size = Vector2(10, 10)
-		attr_circle.color = _get_attribute_color(attr)
-		attr_container.add_child(attr_circle)
-	card_ui.add_child(attr_container)
-	
-	# 卡牌描述（中间区域，使用RichTextLabel）
-	var desc_label = RichTextLabel.new()
-	desc_label.text = card.effect_description
-	desc_label.position = Vector2(4, 28)
-	var desc_height = card_height - 28 - 20
-	desc_label.size = Vector2(card_width - 8, desc_height)
-	desc_label.custom_minimum_size = Vector2(card_width - 8, desc_height)
-	desc_label.mouse_filter = Control.MOUSE_FILTER_IGNORE  # 让点击继续传递给卡牌
-	desc_label.add_theme_font_size_override("normal_font_size", 10)
-	desc_label.add_theme_color_override("default_color", Color(0.88, 0.88, 0.88))
-	desc_label.scroll_active = false  # 禁用滚动
-	desc_label.fit_content = true  # 自动适应内容
-	desc_label.bbcode_enabled = false  # 不启用富文本格式
-	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc_label.clip_contents = false
-	card_ui.add_child(desc_label)
-	
-	# 能量消耗（底部，确保在卡牌内部，提高z-index确保在描述文字上方显示）
-	var cost_label = Label.new()
-	cost_label.text = "能量: " + str(card.energy_cost)
-	cost_label.position = Vector2(4, card_height - 18)  # 确保在卡牌内部
-	cost_label.z_index = 10  # 提高层级，确保在描述文字上方
-	cost_label.size = Vector2(card_width - 8, 16)
-	cost_label.add_theme_font_size_override("font_size", 12)
-	cost_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))  # 金色
-	cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	cost_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	cost_label.clip_contents = true
-	card_ui.add_child(cost_label)
-	
 	return card_ui
-
-# 获取属性颜色
-func _get_attribute_color(attr: String) -> Color:
-	match attr:
-		"fire":
-			return Color.RED
-		"wind":
-			return Color.CYAN
-		"water":
-			return Color.BLUE
-		"rock":
-			return Color.GRAY
-		_:
-			return Color.WHITE
 
 # 手牌更新处理
 func _on_hand_updated(player_id: int, hand_size: int):
