@@ -378,10 +378,12 @@ func execute_move(sprite: Sprite, target_pos: Vector2i, is_basic_action: bool = 
 	# 基本行动（弃牌行动）：不消耗移动力，允许在同一回合内多次移动
 	# 卡牌行动：正常消耗移动力
 	if is_basic_action:
-		# 基本行动：不消耗移动力，但需要检查距离是否合理（限制在基础移动力范围内）
+		# 基本行动：不消耗移动力，但需要检查距离是否合理（限制在有效移动力范围内）
 		# 允许超出当前剩余移动力，因为基本行动不消耗移动力
-		if movement_cost > sprite.base_movement:
-			return {"success": false, "message": "移动距离超出基础移动力范围（距离: " + str(movement_cost) + "，基础移动力: " + str(sprite.base_movement) + "）"}
+		# 获取有效移动范围（考虑状态效果加成，如"提速"效果）
+		var effective_movement = sprite.get_effective_movement_range(game_map, terrain_manager)
+		if movement_cost > effective_movement:
+			return {"success": false, "message": "移动距离超出有效移动力范围（距离: " + str(movement_cost) + "，有效移动力: " + str(effective_movement) + "）"}
 	else:
 		# 卡牌行动：正常检查并消耗移动力
 		if sprite.remaining_movement < movement_cost:

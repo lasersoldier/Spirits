@@ -194,7 +194,7 @@ func _display_opened_cards(shards_gained: int = 0):
 		# 创建卡牌容器
 		var card_container = VBoxContainer.new()
 		card_container.alignment = BoxContainer.ALIGNMENT_CENTER
-		card_container.custom_minimum_size = Vector2(140, 0)  # 设置最小宽度以匹配卡牌
+		card_container.custom_minimum_size = Vector2(190, 0)  # 设置最小宽度以匹配卡牌
 		card_display_container.add_child(card_container)
 		
 		# 显示卡牌

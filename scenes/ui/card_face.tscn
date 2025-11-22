@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/ui/card_face.gd" id="1"]
 
 [node name="CardFace" type="Control"]
-custom_minimum_size = Vector2(140, 220)
+custom_minimum_size = Vector2(190, 300)
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -51,6 +51,13 @@ text = "x0"
 [node name="AttrRow" type="HBoxContainer" parent="CardPanel/Content/VBox"]
 layout_mode = 2
 
+[node name="CardImage" type="TextureRect" parent="CardPanel/Content/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 110)
+stretch_mode = 5
+expand_mode = 1
+
 [node name="Description" type="RichTextLabel" parent="CardPanel/Content/VBox"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -58,6 +65,15 @@ bbcode_enabled = false
 scroll_active = false
 mouse_filter = 2
 autowrap_mode = 4
+
+[node name="RangeLabel" type="Label" parent="CardPanel/Content/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 0
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 10
 
 [node name="BottomRow" type="HBoxContainer" parent="CardPanel/Content/VBox"]
 layout_mode = 2

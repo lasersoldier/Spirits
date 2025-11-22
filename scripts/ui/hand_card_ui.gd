@@ -81,7 +81,7 @@ func _create_card_uis(cards: Array[Card]):
 func _create_card_ui(card: Card) -> Control:
 	var card_ui = CardUI.new()
 	card_ui.set_card(card)
-	card_ui.custom_minimum_size = Vector2(140, 220)
+	card_ui.custom_minimum_size = Vector2(190, 300)
 	# 设置游戏管理器引用（用于检查阶段）
 	if game_manager:
 		card_ui.set_game_manager(game_manager)

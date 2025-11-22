@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://b7hy6uk3mcfv5"]
 
-[ext_resource type="Script" path="res://scripts/ui/particle_background.gd" id="1_particle_bg"]
-[ext_resource type="Script" path="res://scripts/ui/main_menu.gd" id="2_main_menu"]
+[ext_resource type="Script" uid="uid://6bld71jfwl02" path="res://scripts/ui/particle_background.gd" id="1_particle_bg"]
+[ext_resource type="Script" uid="uid://brnvj375gcrst" path="res://scripts/ui/main_menu.gd" id="2_main_menu"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -32,18 +32,17 @@ grow_vertical = 2
 
 [node name="Header" type="Control" parent="ContentLayer"]
 layout_mode = 1
-anchors_preset = 0
+anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -1920.0
 offset_top = 32.0
-offset_right = 0.0
 offset_bottom = 200.0
 grow_horizontal = 2
 
 [node name="TitleContainer" type="VBoxContainer" parent="ContentLayer/Header"]
 layout_mode = 1
-anchors_preset = 0
+anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
@@ -57,19 +56,19 @@ theme_override_constants/separation = 8
 
 [node name="TitleLabel" type="Label" parent="ContentLayer/Header/TitleContainer"]
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.8, 1)
 theme_override_font_sizes/font_size = 60
 text = "SPIRIT CONTINENT"
 horizontal_alignment = 1
 vertical_alignment = 1
-theme_override_colors/font_color = Color(1, 0.95, 0.8, 1)
 
 [node name="SubtitleLabel" type="Label" parent="ContentLayer/Header/TitleContainer"]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.8, 1, 0.8)
 theme_override_font_sizes/font_size = 14
 text = "Season of the Flame"
 horizontal_alignment = 1
 vertical_alignment = 1
-theme_override_colors/font_color = Color(0.4, 0.8, 1, 0.8)
 
 [node name="MenuArea" type="Control" parent="ContentLayer"]
 layout_mode = 1
@@ -87,7 +86,6 @@ layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 0.0
 offset_top = -220.0
 offset_right = 320.0
 offset_bottom = -60.0
@@ -107,12 +105,9 @@ fit_content = true
 
 [node name="MenuContainer" type="VBoxContainer" parent="ContentLayer/MenuArea"]
 layout_mode = 1
-anchors_preset = 0
-anchor_left = 0.0
+anchors_preset = 4
 anchor_top = 0.5
-anchor_right = 0.0
 anchor_bottom = 0.5
-offset_left = 0.0
 offset_top = -80.0
 offset_right = 320.0
 offset_bottom = 80.0
@@ -121,67 +116,61 @@ grow_vertical = 0
 theme_override_constants/separation = 16
 
 [node name="DescriptionLabel" type="Label" parent="ContentLayer/MenuArea"]
+modulate = Color(1, 1, 1, 0)
 layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 0.0
 offset_top = -20.0
 offset_right = 320.0
-offset_bottom = 0.0
 grow_vertical = 0
+theme_override_colors/font_color = Color(1, 0.85, 0.5, 0.8)
 theme_override_font_sizes/font_size = 12
 text = "..."
 horizontal_alignment = 2
 vertical_alignment = 1
-modulate = Color(1, 1, 1, 0)
-theme_override_colors/font_color = Color(1, 0.85, 0.5, 0.8)
 
 [node name="Footer" type="Control" parent="ContentLayer"]
 layout_mode = 1
-anchors_preset = 7
+anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = -1920.0
 offset_top = -100.0
-offset_right = 0.0
-offset_bottom = 0.0
 grow_horizontal = 2
 grow_vertical = 0
 
 [node name="FooterLeft" type="HBoxContainer" parent="ContentLayer/Footer"]
 layout_mode = 1
-anchors_preset = 0
+anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = -500.0
 offset_top = -40.0
-offset_right = 0.0
-offset_bottom = 0.0
 grow_horizontal = 0
 theme_override_constants/separation = 24
 
 [node name="VersionLabel" type="Label" parent="ContentLayer/Footer/FooterLeft"]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
 theme_override_font_sizes/font_size = 12
 text = "Ver 0.9.2-alpha"
-theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
 
 [node name="ServerLabel" type="Label" parent="ContentLayer/Footer/FooterLeft"]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
 theme_override_font_sizes/font_size = 12
 text = "Server: Asia-HK"
-theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
 
 [node name="StatusLabel" type="Label" parent="ContentLayer/Footer/FooterLeft"]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 0.8, 0.3, 0.7)
 theme_override_font_sizes/font_size = 12
 text = "Online"
-theme_override_colors/font_color = Color(0.3, 0.8, 0.3, 0.7)
 
 [node name="FooterRight" type="Label" parent="ContentLayer/Footer"]
 layout_mode = 1
@@ -191,10 +180,9 @@ anchor_right = 1.0
 offset_left = -200.0
 offset_top = -40.0
 offset_right = -32.0
-offset_bottom = 0.0
 grow_horizontal = 0
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 0.5)
 theme_override_font_sizes/font_size = 12
 text = "UID: 800293114"
 horizontal_alignment = 2
 vertical_alignment = 2
-theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 0.5)

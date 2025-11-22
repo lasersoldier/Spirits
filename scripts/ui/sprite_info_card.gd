@@ -276,9 +276,18 @@ func _update_info():
 		else:
 			hp_bar.modulate = Color.GREEN
 	
-	# 更新移动力
+	# 更新移动力（显示有效移动范围，考虑状态效果加成）
 	if movement_label:
-		movement_label.text = "移动范围: %d (当前剩余: %d)" % [current_sprite.base_movement, current_sprite.remaining_movement]
+		# 获取有效移动范围（考虑状态效果加成）
+		var effective_movement = current_sprite.base_movement
+		if game_manager and game_manager.game_map and game_manager.terrain_manager:
+			effective_movement = current_sprite.get_effective_movement_range(game_manager.game_map, game_manager.terrain_manager)
+		
+		# 如果有效移动范围与基础移动范围不同，显示更多信息
+		if effective_movement != current_sprite.base_movement:
+			movement_label.text = "移动范围: %d (基础: %d)" % [effective_movement, current_sprite.base_movement]
+		else:
+			movement_label.text = "移动范围: %d" % effective_movement
 		print("  移动力: ", movement_label.text)
 	
 	# 更新攻击距离

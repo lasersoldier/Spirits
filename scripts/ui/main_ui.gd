@@ -1746,10 +1746,10 @@ func _highlight_move_targets_for_discard_action(source_sprite: Sprite):
 	_clear_discard_action_highlights()
 	
 	# 获取移动范围内的所有可移动位置
-	# 基本行动（弃牌行动）不消耗移动力，使用基础移动力范围
-	var movement = source_sprite.base_movement  # 使用基础移动力，而不是剩余移动力
-	print("精灵移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement, " 当前位置: ", source_sprite.hex_position)
-	print("基本行动（弃牌）使用基础移动力范围: ", movement, "（不消耗移动力）")
+	# 基本行动（弃牌行动）不消耗移动力，使用有效移动力范围（考虑状态效果加成）
+	var movement = source_sprite.get_effective_movement_range(game_manager.game_map, game_manager.terrain_manager)
+	print("精灵移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement, " 有效移动力: ", movement, " 当前位置: ", source_sprite.hex_position)
+	print("基本行动（弃牌）使用有效移动力范围: ", movement, "（不消耗移动力，已考虑状态效果加成）")
 	
 	var range_hexes = HexGrid.get_hexes_in_range(source_sprite.hex_position, movement)
 	print("移动范围内共有 ", range_hexes.size(), " 个六边形")
@@ -1772,7 +1772,7 @@ func _highlight_move_targets_for_discard_action(source_sprite: Sprite):
 			if valid_positions <= 5:  # 只打印前5个
 				print("  高亮可移动位置: ", hex_pos, " 距离: ", distance)
 	
-	print("高亮了 ", discard_action_state.highlighted_hexes.size(), " 个可移动位置（基础移动力: ", movement, "，当前移动力: ", source_sprite.remaining_movement, "/", source_sprite.base_movement, "）")
+	print("高亮了 ", discard_action_state.highlighted_hexes.size(), " 个可移动位置（有效移动力: ", movement, "，基础移动力: ", source_sprite.base_movement, "，当前移动力: ", source_sprite.remaining_movement, "）")
 	print("提示：基本行动（弃牌）不消耗移动力，可以在同一回合内多次移动")
 	print("高亮完成后 active: ", discard_action_state.active)
 
@@ -1812,11 +1812,12 @@ func _select_move_target_for_discard_action(hex_coord: Vector2i):
 		print("警告：点击了当前位置，原地停留没有意义")
 		return
 	
-	# 基本行动（弃牌行动）不消耗移动力，但是移动距离不能超过基础移动力范围
-	# 检查距离是否在基础移动力范围内
+	# 基本行动（弃牌行动）不消耗移动力，但是移动距离不能超过有效移动力范围（考虑状态效果加成）
+	# 检查距离是否在有效移动力范围内
 	var distance = HexGrid.hex_distance(source_sprite.hex_position, hex_coord)
-	if distance > source_sprite.base_movement:
-		print("无法移动到该位置: ", hex_coord, " 距离 ", distance, " 超过基础移动力 ", source_sprite.base_movement)
+	var effective_movement = source_sprite.get_effective_movement_range(game_manager.game_map, game_manager.terrain_manager)
+	if distance > effective_movement:
+		print("无法移动到该位置: ", hex_coord, " 距离 ", distance, " 超过有效移动力 ", effective_movement, "（基础移动力: ", source_sprite.base_movement, "）")
 		return
 	
 	# 实时验证目标位置是否可移动（使用最新的地形数据）
@@ -2357,6 +2358,16 @@ func _on_end_turn_button_pressed():
 	if game_manager.actions_submitted.get(GameManager.HUMAN_PLAYER_ID, false):
 		print("已经提交过行动了")
 		return
+	
+	# 如果处于弃牌行动阶段，先取消弃牌
+	if discard_action_state.active:
+		print("回合结束前取消弃牌行动: ", discard_action_state.card.card_name if discard_action_state.card else "未知")
+		_exit_discard_action_phase()
+	
+	# 如果处于卡牌使用阶段，先取消使用
+	if card_use_state.active:
+		print("回合结束前取消卡牌使用: ", card_use_state.card.card_name if card_use_state.card else "未知")
+		_exit_card_use_phase()
 	
 	print("点击回合结束按钮，提交回合")
 	# 提交回合

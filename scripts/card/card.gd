@@ -106,6 +106,16 @@ func update_cooldown():
 func is_cooldown_ready() -> bool:
 	return current_cooldown <= 0
 
+# 获取简称描述
+func get_short_description() -> String:
+	if effects.is_empty():
+		return effect_description
+	
+	var short_desc = CardEffectShortener.get_short_description(effects)
+	if short_desc.is_empty():
+		return effect_description
+	return short_desc
+
 # 复制卡牌（用于创建卡牌实例）
 func duplicate_card() -> Card:
 	var new_card = Card.new()

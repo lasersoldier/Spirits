@@ -136,9 +136,32 @@ func is_in_vision_range(target_position: Vector2i) -> bool:
 	var distance = HexGrid.hex_distance(hex_position, target_position)
 	return distance <= vision_range
 
+# 获取有效移动范围（考虑状态效果加成和地形惩罚）
+func get_effective_movement_range(game_map: GameMap = null, terrain_manager: TerrainManager = null) -> int:
+	var effective_movement = base_movement
+	
+	# 考虑状态效果的移动范围加成
+	var status_mgr = StatusEffectManager.get_instance()
+	if status_mgr:
+		var bonus = status_mgr.get_movement_bonus(self)
+		effective_movement += bonus
+	
+	# 考虑地形效果的移动范围惩罚（如果有地形管理器和地图）
+	if terrain_manager and game_map:
+		var current_terrain = game_map.get_terrain(hex_position)
+		if current_terrain:
+			var terrain_effects = terrain_manager.apply_terrain_effects(self, hex_position)
+			if terrain_effects.has("movement_range_penalty"):
+				effective_movement = max(1, effective_movement - terrain_effects.movement_range_penalty)
+	
+	return max(1, effective_movement)
+
 # 获取可移动到的位置列表（考虑路径高度限制）
 func get_movable_positions(game_map: GameMap, terrain_manager: TerrainManager) -> Array[Vector2i]:
 	var movable: Array[Vector2i] = []
+	
+	# 获取有效移动范围（考虑状态效果加成和地形惩罚）
+	var effective_movement = get_effective_movement_range(game_map, terrain_manager)
 	
 	# 水精灵特殊能力：在相连水流中无视距离和高度移动
 	if attribute == "water":
@@ -149,7 +172,9 @@ func get_movable_positions(game_map: GameMap, terrain_manager: TerrainManager) -
 				if game_map.is_valid_hex_with_terrain(water_pos):
 					movable.append(water_pos)
 			# 水精灵仍然可以正常移动到非水流位置（在移动范围内）
-			var range_hexes = HexGrid.get_hexes_in_range(hex_position, base_movement)
+			# 获取有效移动范围（考虑状态效果加成）
+			var water_effective_movement = get_effective_movement_range(game_map, terrain_manager)
+			var range_hexes = HexGrid.get_hexes_in_range(hex_position, water_effective_movement)
 			for hex_pos in range_hexes:
 				if hex_pos in connected_water:
 					continue  # 已经添加过了
@@ -158,14 +183,6 @@ func get_movable_positions(game_map: GameMap, terrain_manager: TerrainManager) -
 				if terrain_manager.can_move_to(self, hex_pos):
 					movable.append(hex_pos)
 			return movable
-	
-	# 普通精灵：考虑移动范围惩罚（水流地形）
-	var effective_movement = base_movement
-	var current_terrain = game_map.get_terrain(hex_position)
-	if current_terrain:
-		var terrain_effects = terrain_manager.apply_terrain_effects(self, hex_position)
-		if terrain_effects.has("movement_range_penalty"):
-			effective_movement = max(1, base_movement - terrain_effects.movement_range_penalty)
 	
 	# 获取移动范围内的所有位置
 	var range_hexes = HexGrid.get_hexes_in_range(hex_position, effective_movement)
