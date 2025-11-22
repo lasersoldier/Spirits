@@ -30,6 +30,7 @@ const PARABOLIC_ARROW_COLOR := Color(1.0, 0.4, 0.2, 0.8)  # 橙色（攻击/效�
 const ARROW_WIDTH := 4.0
 const ARROW_HEAD_SIZE := 12.0
 const HOVER_DETECTION_THRESHOLD := 15.0  # 像素
+const CANCEL_BUTTON_HOVER_MARGIN := 50.0  # 取消按钮悬停检测边距（像素）
 
 func _ready():
 	# 创建UI容器（用于取消按钮和卡牌预览）
@@ -203,6 +204,10 @@ func _update_arrow(action: ActionResolver.Action):
 			arrow_head.basis = Basis(x_axis, y_axis, z_axis)
 		else:
 			arrow_head.position = end_pos_3d
+	
+	# 同步更新取消按钮位置（如果当前悬停的是这个箭头）
+	if hovered_arrow_action == action:
+		_show_hover_ui(action, get_global_mouse_position())
 
 # 移除箭头
 func _remove_arrow(action: ActionResolver.Action):
@@ -290,6 +295,57 @@ func _get_target_world_position(action: ActionResolver.Action) -> Vector3:
 		return _get_hex_world_position(action.target as Vector2i)
 	
 	return Vector3(-1, -1, -1)
+
+# 3D世界坐标转屏幕坐标的工具函数
+func _world_to_screen_position(world_pos: Vector3) -> Vector2:
+	if not main_ui:
+		return Vector2(-1, -1)
+	
+	var map_viewport = main_ui.get_node_or_null("MapViewport") as SubViewportContainer
+	if not map_viewport:
+		return Vector2(-1, -1)
+	
+	var sub_viewport = map_viewport.get_node_or_null("SubViewport") as SubViewport
+	if not sub_viewport:
+		return Vector2(-1, -1)
+	
+	var camera = sub_viewport.get_node_or_null("World/Camera3D") as Camera3D
+	if not camera:
+		return Vector2(-1, -1)
+	
+	# 3D转视口坐标
+	var viewport_pos = camera.unproject_position(world_pos)
+	
+	# 视口坐标转全局屏幕坐标（处理缩放和偏移）
+	var container_rect = map_viewport.get_global_rect()
+	var viewport_size = Vector2(sub_viewport.size)
+	var container_size = container_rect.size
+	
+	if map_viewport.stretch:
+		var scale_factor = min(container_size.x / viewport_size.x, container_size.y / viewport_size.y)
+		var scaled_width = viewport_size.x * scale_factor
+		var scaled_height = viewport_size.y * scale_factor
+		var offset_x = (container_size.x - scaled_width) / 2.0
+		var offset_y = (container_size.y - scaled_height) / 2.0
+		
+		return Vector2(
+			container_rect.position.x + offset_x + viewport_pos.x * scale_factor,
+			container_rect.position.y + offset_y + viewport_pos.y * scale_factor
+		)
+	else:
+		var offset_x = (container_size.x - viewport_size.x) / 2.0
+		var offset_y = (container_size.y - viewport_size.y) / 2.0
+		
+		return Vector2(
+			container_rect.position.x + offset_x + viewport_pos.x,
+			container_rect.position.y + offset_y + viewport_pos.y
+		)
+
+# 计算抛物线中点（3D）
+func _calculate_parabolic_midpoint(start: Vector3, end: Vector3) -> Vector3:
+	var control_point = (start + end) / 2.0
+	control_point.y += start.distance_to(end) * 0.3  # 保持与原抛物线一致的高度
+	return _bezier_quadratic_3d(start, control_point, end, 0.5)
 
 # 获取六边形的世界坐标
 func _get_hex_world_position(hex_coord: Vector2i) -> Vector3:
@@ -584,11 +640,21 @@ func _process(_delta):
 	var closest_distance = HOVER_DETECTION_THRESHOLD
 	
 	# 检测所有箭头
+	# 优先检查鼠标是否在任何取消按钮上
 	for action in action_arrows.keys():
-		var distance = _get_distance_to_arrow(mouse_pos, action)
-		if distance < closest_distance:
-			closest_distance = distance
+		if _is_mouse_on_cancel_button(mouse_pos, action):
+			# 鼠标在按钮上，直接设为悬停（距离为0，优先级最高）
+			closest_distance = 0.0
 			closest_action = action
+			break  # 找到按钮上的，优先处理，不需要继续检查
+	
+	# 如果鼠标不在任何按钮上，检查到箭头路径的距离
+	if closest_action == null:
+		for action in action_arrows.keys():
+			var distance = _get_distance_to_arrow(mouse_pos, action)
+			if distance < closest_distance:
+				closest_distance = distance
+				closest_action = action
 	
 	# 更新悬停状态
 	if closest_action != hovered_arrow_action:
@@ -600,6 +666,25 @@ func _process(_delta):
 		hovered_arrow_action = closest_action
 		if hovered_arrow_action:
 			_show_hover_ui(hovered_arrow_action, mouse_pos)
+
+# 检查鼠标是否在取消按钮上（包括周围边距区域）
+func _is_mouse_on_cancel_button(mouse_pos: Vector2, action: ActionResolver.Action) -> bool:
+	if not action_arrows.has(action):
+		return false
+	
+	var arrow_data = action_arrows[action]
+	var cancel_button = arrow_data.get("cancel_button") as Button
+	if not cancel_button or not cancel_button.visible:
+		return false
+	
+	# 获取按钮的全局矩形，并扩大边距区域以便更容易点击
+	var button_rect = Rect2(
+		cancel_button.global_position - Vector2(CANCEL_BUTTON_HOVER_MARGIN, CANCEL_BUTTON_HOVER_MARGIN),
+		cancel_button.size + Vector2(CANCEL_BUTTON_HOVER_MARGIN * 2, CANCEL_BUTTON_HOVER_MARGIN * 2)
+	)
+	
+	# 检查鼠标是否在按钮区域内（包括边距）
+	return button_rect.has_point(mouse_pos)
 
 # 获取鼠标到箭头的距离（通过3D到2D投影）
 func _get_distance_to_arrow(mouse_pos: Vector2, action: ActionResolver.Action) -> float:
@@ -698,18 +783,36 @@ func _show_hover_ui(action: ActionResolver.Action, mouse_pos: Vector2):
 	# 显示取消按钮
 	var cancel_button = arrow_data.get("cancel_button") as Button
 	if cancel_button:
-		# 计算箭头中点位置（使用屏幕坐标）
-		var start_pos = _get_sprite_screen_position(action.sprite)
-		var end_pos = _get_target_screen_position(action)
-		var mid_pos = (start_pos + end_pos) / 2.0
-		mid_pos.y -= 40  # 向上偏移
+		# 基于箭头的实际3D路径计算精确的2D屏幕位置
+		var start_3d = _get_sprite_world_position(action.sprite)
+		var end_3d = _get_target_world_position(action)
 		
-		cancel_button.position = mid_pos - cancel_button.size / 2.0
-		cancel_button.visible = true
+		if start_3d == Vector3(-1, -1, -1) or end_3d == Vector3(-1, -1, -1):
+			return
+		
+		var is_move = action.action_type == ActionResolver.ActionType.MOVE
+		var target_3d: Vector3
+		
+		if is_move:
+			# 直线箭头：使用中点
+			target_3d = (start_3d + end_3d) / 2.0
+		else:
+			# 抛物线箭头：使用抛物线中点
+			target_3d = _calculate_parabolic_midpoint(start_3d, end_3d)
+		
+		# 将3D位置投影到屏幕坐标
+		var screen_pos = _world_to_screen_position(target_3d)
+		
+		if screen_pos != Vector2(-1, -1):
+			# 固定像素偏移：箭头中点左上方（可调整）
+			var offset = Vector2(-15, -15)  # 固定像素偏移
+			cancel_button.position = screen_pos + offset - cancel_button.size / 2.0
+			cancel_button.visible = true
 	
-	# 如果是攻击/效果行动且有卡牌，显示卡牌预览
+	# 如果是攻击/效果/地形行动且有卡牌，显示卡牌预览
 	if action.card and (action.action_type == ActionResolver.ActionType.ATTACK or 
-						action.action_type == ActionResolver.ActionType.EFFECT):
+						action.action_type == ActionResolver.ActionType.EFFECT or
+						action.action_type == ActionResolver.ActionType.TERRAIN):
 		if not current_card_preview:
 			var preview = CARD_PREVIEW_SCENE.instantiate()
 			if preview and preview.has_method("setup"):

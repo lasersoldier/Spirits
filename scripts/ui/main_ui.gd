@@ -463,6 +463,16 @@ func _on_card_drag_started(card_ui: CardUI, card: Card):
 		_clear_arrow_indicator()
 		right_dragging_card = null
 	
+	# 如果正在卡牌使用阶段（已选中卡牌到精灵，但未选择目标），取消之前的行动
+	if card_use_state.active:
+		print("取消之前的卡牌使用行动")
+		_exit_card_use_phase()
+	
+	# 如果正在弃牌行动阶段（已选中卡牌到精灵，但未选择目标），取消之前的行动
+	if discard_action_state.active:
+		print("取消之前的弃牌行动")
+		_exit_discard_action_phase()
+	
 	dragging_card_ui = card_ui
 	dragging_card = card
 	print("开始拖动卡牌: ", card.card_name)
@@ -485,6 +495,16 @@ func _on_card_right_drag_started(card_ui: CardUI, card: Card):
 		_clear_arrow_indicator()
 		dragging_card_ui = null
 		dragging_card = null
+	
+	# 如果正在卡牌使用阶段（已选中卡牌到精灵，但未选择目标），取消之前的行动
+	if card_use_state.active:
+		print("取消之前的卡牌使用行动")
+		_exit_card_use_phase()
+	
+	# 如果正在弃牌行动阶段（已选中卡牌到精灵，但未选择目标），取消之前的行动
+	if discard_action_state.active:
+		print("取消之前的弃牌行动")
+		_exit_discard_action_phase()
 	
 	right_dragging_card = card
 	right_dragging_card_ui = card_ui
