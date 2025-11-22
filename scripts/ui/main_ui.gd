@@ -67,10 +67,13 @@ var last_clicked_position: Vector2i = Vector2i(-1, -1)
 var last_clicked_sprites: Array[Sprite] = []
 var last_selected_sprite_index: int = 0
 
-# 动作预览UI
+# 动作预览UI（已废弃，改用箭头显示）
 var action_preview_panel: Panel = null
 var action_preview_list: VBoxContainer = null
 var action_preview_items: Array[Control] = []
+
+# 行动箭头管理器
+var action_arrow_manager: ActionArrowManager = null
 
 # 回合结束按钮
 var end_turn_button: Button = null
@@ -132,6 +135,13 @@ func _ready():
 	add_child(sprite_info_card)
 	print("精灵资料卡已创建并添加到UI")
 	
+	# 创建行动箭头管理器
+	action_arrow_manager = ActionArrowManager.new()
+	action_arrow_manager.set_main_ui(self)
+	action_arrow_manager.game_manager = null  # 稍后在set_game_manager中设置
+	add_child(action_arrow_manager)
+	print("行动箭头管理器已创建并添加到UI")
+	
 	# 创建回合结束按钮
 	_create_end_turn_button()
 	
@@ -177,6 +187,9 @@ func set_game_manager(gm: GameManager):
 	# 传递游戏管理器引用给资料卡
 	if sprite_info_card:
 		sprite_info_card.game_manager = gm
+	# 传递游戏管理器引用给行动箭头管理器
+	if action_arrow_manager:
+		action_arrow_manager.set_game_manager(gm)
 	# 传递游戏管理器引用给手牌UI
 	if hand_card_ui:
 		hand_card_ui.set_game_manager(gm)
@@ -2118,59 +2131,23 @@ func _clear_discard_action_highlights():
 
 # ========== 动作预览系统 ==========
 
-# 更新动作预览
+# 更新动作预览（使用箭头显示系统）
 func _update_action_preview():
 	if not game_manager or not game_manager.action_resolver:
 		return
 	
-	# 创建预览面板（如果不存在）
-	if not action_preview_panel:
-		_create_action_preview_panel()
-	
-	# 清除现有预览项
-	_clear_action_preview_items()
-	
 	# 获取所有行动的预览
 	var previews = game_manager.action_resolver.get_all_action_previews()
 	
-	if previews.size() == 0:
-		# 没有行动，隐藏面板
-		if action_preview_panel:
-			action_preview_panel.visible = false
-		return
+	# 使用箭头管理器更新箭头显示
+	if action_arrow_manager:
+		action_arrow_manager.update_arrows(previews)
 	
-	# 显示面板
+	# 隐藏旧的右上角面板（如果存在）
 	if action_preview_panel:
-		action_preview_panel.visible = true
+		action_preview_panel.visible = false
 	
-	# 按结算顺序分组显示
-	var effect_previews: Array[Dictionary] = []
-	var terrain_previews: Array[Dictionary] = []
-	var attack_previews: Array[Dictionary] = []
-	var move_previews: Array[Dictionary] = []
-	
-	for preview in previews:
-		match preview.action.action_type:
-			ActionResolver.ActionType.EFFECT:
-				effect_previews.append(preview)
-			ActionResolver.ActionType.TERRAIN:
-				terrain_previews.append(preview)
-			ActionResolver.ActionType.ATTACK:
-				attack_previews.append(preview)
-			ActionResolver.ActionType.MOVE:
-				move_previews.append(preview)
-	
-	# 按顺序添加预览项
-	for preview in effect_previews:
-		_add_preview_item(preview)
-	for preview in terrain_previews:
-		_add_preview_item(preview)
-	for preview in attack_previews:
-		_add_preview_item(preview)
-	for preview in move_previews:
-		_add_preview_item(preview)
-	
-	# 在地图上高亮显示动作目标
+	# 在地图上高亮显示动作目标（保留此功能）
 	_highlight_action_targets_on_map(previews)
 
 # 创建动作预览面板
@@ -2292,6 +2269,11 @@ func _clear_action_preview_items():
 
 # 清除动作预览
 func _clear_action_preview():
+	# 清除箭头显示
+	if action_arrow_manager:
+		action_arrow_manager.clear_all_arrows()
+	
+	# 清除旧的预览项（保留以防需要）
 	_clear_action_preview_items()
 	if action_preview_panel:
 		action_preview_panel.visible = false
