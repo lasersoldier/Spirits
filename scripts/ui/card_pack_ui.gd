@@ -2,15 +2,14 @@ class_name CardPackUI
 extends Control
 
 # UI节点引用
-@onready var pack_card_container: Control = $CenterContainer/PackStage/PackCardContainer
-@onready var pack_card: Panel = $CenterContainer/PackStage/PackCardContainer/PackCard
-@onready var pack_card_label: Label = $CenterContainer/PackStage/PackCardContainer/PackCard/VBoxContainer/Label
-@onready var pack_card_subtitle: Label = $CenterContainer/PackStage/PackCardContainer/PackCard/VBoxContainer/SubtitleLabel
-@onready var opening_animation: Control = $CenterContainer/PackStage/OpeningAnimation
-@onready var opening_glow: ColorRect = $CenterContainer/PackStage/OpeningAnimation/GlowRect
-@onready var opening_icon: Control = $CenterContainer/PackStage/OpeningAnimation/IconContainer
-@onready var card_display_container: GridContainer = $CenterContainer/CardDisplayContainer
-@onready var open_another_button: Button = $CenterContainer/ButtonBar/OpenAnotherButton
+@onready var particle_bg: ParticleBackground = $ParticleBackground
+@onready var pack_stage: Control = $PackStage
+@onready var pack_icon: Control = $PackStage/PackIcon
+@onready var rune_container: Control = $PackStage/RuneContainer
+@onready var opening_animation: Control = $PackStage/OpeningAnimation
+@onready var flash_rect: ColorRect = $PackStage/OpeningAnimation/FlashRect
+@onready var card_display_area: Control = $CardDisplayArea
+@onready var open_another_button: Control = $OpenAnotherButton
 @onready var back_button: Button = $TopBar/BackButton
 @onready var status_label: Label = $TopBar/StatusLabel
 @onready var gold_label: Label = $TopBar/GoldLabel
@@ -25,9 +24,13 @@ var pack_opener: CardPackOpener
 # 状态
 var is_opening: bool = false
 var opened_cards: Array[Dictionary] = []
+var card_ui_nodes: Array[Control] = []
 
-# 卡牌卡片场景
+# 卡牌场景
 const CARD_CARD_SCENE = preload("res://scenes/ui/card_face.tscn")
+
+# 符文节点
+var rune_nodes: Array[Control] = []
 
 func _ready():
 	# 初始化系统
@@ -37,10 +40,18 @@ func _ready():
 	pack_opener = CardPackOpener.new(card_library, player_collection, player_data_manager)
 	
 	# 连接信号
-	if pack_card:
-		pack_card.gui_input.connect(_on_pack_card_input)
+	if pack_icon:
+		pack_icon.mouse_filter = Control.MOUSE_FILTER_STOP  # 确保可以接收鼠标事件
+		pack_icon.gui_input.connect(_on_pack_icon_input)
+		pack_icon.mouse_entered.connect(_on_pack_icon_mouse_entered)
+		pack_icon.mouse_exited.connect(_on_pack_icon_mouse_exited)
+		print("CardPackUI: PackIcon信号已连接")
 	if open_another_button:
-		open_another_button.pressed.connect(_on_open_another_pressed)
+		open_another_button.mouse_filter = Control.MOUSE_FILTER_STOP  # 确保可以接收鼠标事件
+		open_another_button.gui_input.connect(_on_open_another_input)
+		open_another_button.mouse_entered.connect(_on_open_another_mouse_entered)
+		open_another_button.mouse_exited.connect(_on_open_another_mouse_exited)
+		print("CardPackUI: OpenAnotherButton信号已连接")
 	if back_button:
 		back_button.pressed.connect(_on_back_button_pressed)
 	
@@ -49,58 +60,78 @@ func _ready():
 	
 	# 初始化UI状态
 	_update_gold_display()
-	_show_pack_card()
-	opening_animation.visible = false
-	card_display_container.visible = false
+	_show_pack_stage()
+	_setup_runes()
+	card_display_area.visible = false
 	open_another_button.visible = false
 
-# 显示卡包卡片
-func _show_pack_card():
-	pack_card_container.visible = true
+# 设置符文环绕
+func _setup_runes():
+	if not rune_container:
+		return
+	
+	# 创建8个符文，围绕卡包旋转
+	var rune_count = 8
+	var radius = 120.0
+	
+	for i in range(rune_count):
+		var rune = ColorRect.new()
+		rune.custom_minimum_size = Vector2(24, 24)
+		rune.color = Color(1.0, 0.65, 0.0, 0.6)
+		
+		# 计算位置（圆形分布）
+		var angle = (i * 2.0 * PI) / rune_count
+		var pos = Vector2(cos(angle), sin(angle)) * radius
+		rune.position = pos - Vector2(12, 12)
+		
+		rune_container.add_child(rune)
+		rune_nodes.append(rune)
+		
+		# 创建旋转动画
+		var tween = create_tween()
+		tween.set_loops()
+		tween.tween_property(rune, "rotation_degrees", 360, 3.0 + i * 0.2)
+		tween.tween_property(rune, "modulate:a", 0.3, 1.0)
+		tween.tween_property(rune, "modulate:a", 0.8, 1.0)
+
+# 显示卡包阶段
+func _show_pack_stage():
+	pack_stage.visible = true
 	opening_animation.visible = false
-	card_display_container.visible = false
+	card_display_area.visible = false
 	open_another_button.visible = false
 	
-	# 设置卡包卡片样式
-	if pack_card:
-		var style = StyleBoxFlat.new()
-		style.bg_color = Color(0.1, 0.1, 0.12, 0.9)
-		style.border_color = Color(1.0, 0.65, 0.0, 0.3)
-		style.border_width_left = 2
-		style.border_width_top = 2
-		style.border_width_right = 2
-		style.border_width_bottom = 2
-		style.corner_radius_top_left = 16
-		style.corner_radius_top_right = 16
-		style.corner_radius_bottom_left = 16
-		style.corner_radius_bottom_right = 16
-		pack_card.add_theme_stylebox_override("panel", style)
-		
-		# 添加悬停效果
-		pack_card.mouse_entered.connect(_on_pack_card_mouse_entered)
-		pack_card.mouse_exited.connect(_on_pack_card_mouse_exited)
+	# 重置卡包图标状态
+	if pack_icon:
+		pack_icon.scale = Vector2(1.0, 1.0)
+		pack_icon.modulate = Color.WHITE
 
-# 卡包卡片鼠标进入
-func _on_pack_card_mouse_entered():
-	if pack_card:
-		pack_card.scale = Vector2(1.05, 1.05)
-		var style = pack_card.get_theme_stylebox("panel")
-		if style:
-			style.border_color = Color(1.0, 0.65, 0.0, 0.6)
+# 卡包图标鼠标进入
+func _on_pack_icon_mouse_entered():
+	print("CardPackUI: 鼠标进入PackIcon")
+	if pack_icon and not is_opening:
+		var tween = create_tween()
+		tween.tween_property(pack_icon, "scale", Vector2(1.1, 1.1), 0.2)
+		# 添加发光效果
+		pack_icon.modulate = Color(1.2, 1.1, 1.0, 1.0)
 
-# 卡包卡片鼠标离开
-func _on_pack_card_mouse_exited():
-	if pack_card:
-		pack_card.scale = Vector2(1.0, 1.0)
-		var style = pack_card.get_theme_stylebox("panel")
-		if style:
-			style.border_color = Color(1.0, 0.65, 0.0, 0.3)
+# 卡包图标鼠标离开
+func _on_pack_icon_mouse_exited():
+	if pack_icon and not is_opening:
+		var tween = create_tween()
+		tween.tween_property(pack_icon, "scale", Vector2(1.0, 1.0), 0.2)
+		pack_icon.modulate = Color.WHITE
 
-# 卡包卡片输入
-func _on_pack_card_input(event: InputEvent):
+# 卡包图标输入
+func _on_pack_icon_input(event: InputEvent):
+	print("CardPackUI: 收到PackIcon输入事件: ", event)
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		print("CardPackUI: 左键点击PackIcon")
 		if not is_opening and opened_cards.is_empty():
+			print("CardPackUI: 开始开包")
 			_open_pack()
+		else:
+			print("CardPackUI: 无法开包 - is_opening: ", is_opening, ", opened_cards.size(): ", opened_cards.size())
 
 # 更新金币显示
 func _update_gold_display():
@@ -120,28 +151,17 @@ func _open_pack():
 	if player_data_manager.get_gold() < 200:
 		if status_label:
 			status_label.text = "金币不足！需要 200 金币"
+		# ToastMessage.show(self, "金币不足！需要 200 金币", 2.0)  # 暂时使用status_label
 		return
 	
 	is_opening = true
-	pack_card_container.visible = false
 	
-	# 显示开包动画
-	_show_opening_animation()
-	
-	# 等待动画后开包
-	await get_tree().create_timer(2.0).timeout
-	
-	# 执行开包
+	# 先执行开包逻辑获取数据（在动画之前）
 	var result = pack_opener.open_pack("standard")
-	
-	# 更新金币显示
 	_update_gold_display()
 	
 	# 检查开包结果
 	if not result.get("success", false):
-		# 开包失败
-		opening_animation.visible = false
-		pack_card_container.visible = true
 		if status_label:
 			status_label.text = result.get("message", "开包失败")
 		is_opening = false
@@ -151,87 +171,289 @@ func _open_pack():
 	opened_cards = result.get("cards", [])
 	var shards_gained = result.get("shards_gained", 0)
 	
-	# 隐藏动画，显示卡牌
-	opening_animation.visible = false
-	_display_opened_cards(shards_gained)
+	print("CardPackUI: 开包成功，获得 ", opened_cards.size(), " 张卡牌")
+	for i in range(opened_cards.size()):
+		var card_id = opened_cards[i].get("id", opened_cards[i].get("card_id", "unknown"))
+		print("CardPackUI: 卡牌 ", i, ": ", card_id)
+	
+	# 第一步：卡包震动
+	await _shake_pack()
+	
+	# 第二步：白光闪过
+	await _flash_screen()
+	
+	# 第三步：卡包消失，卡牌飞出（此时opened_cards已经有数据了）
+	pack_stage.visible = false
+	await _spawn_cards()
+	
+	# 显示状态信息
+	await _reveal_cards(shards_gained)
 	
 	is_opening = false
 
-# 显示开包动画
-func _show_opening_animation():
-	opening_animation.visible = true
-	
-	# 白色闪烁效果
-	if opening_glow:
-		var tween = create_tween()
-		tween.set_loops()
-		tween.tween_property(opening_glow, "modulate:a", 0.3, 0.3)
-		tween.tween_property(opening_glow, "modulate:a", 0.8, 0.3)
-	
-	# 旋转图标
-	if opening_icon:
-		var rotate_tween = create_tween()
-		rotate_tween.set_loops()
-		rotate_tween.tween_property(opening_icon, "rotation_degrees", 360, 1.0)
-
-# 显示开出的卡牌
-func _display_opened_cards(shards_gained: int = 0):
-	if not card_display_container:
+# 卡包震动动画
+func _shake_pack() -> void:
+	if not pack_icon:
+		await get_tree().create_timer(0.5).timeout
 		return
 	
-	card_display_container.visible = true
-	open_another_button.visible = true
+	var original_pos = pack_icon.position
+	var shake_intensity = 15.0
+	var shake_duration = 0.5
 	
-	# 清空现有显示
+	for i in range(10):
+		var offset = Vector2(
+			randf_range(-shake_intensity, shake_intensity),
+			randf_range(-shake_intensity, shake_intensity)
+		)
+		pack_icon.position = original_pos + offset
+		await get_tree().create_timer(shake_duration / 10.0).timeout
+	
+	pack_icon.position = original_pos
+
+# 白光闪过
+func _flash_screen() -> void:
+	if not flash_rect:
+		await get_tree().create_timer(0.3).timeout
+		return
+	
+	opening_animation.visible = true
+	flash_rect.modulate.a = 0.0
+	
+	# 快速闪白
+	var tween = create_tween()
+	tween.tween_property(flash_rect, "modulate:a", 1.0, 0.1)
+	tween.tween_property(flash_rect, "modulate:a", 0.0, 0.2)
+	
+	await tween.finished
+	opening_animation.visible = false
+
+# 生成卡牌（扇形飞出）
+func _spawn_cards() -> void:
+	card_display_area.visible = true
 	_clear_card_display()
 	
-	# 显示每张卡牌
-	for i in range(opened_cards.size()):
-		var card_data = opened_cards[i]
-		var is_converted = card_data.get("converted_to_shards", false)
-		var shard_value = card_data.get("shard_value", 0)
-		
-		# 创建卡牌容器
-		var card_container = VBoxContainer.new()
-		card_container.alignment = BoxContainer.ALIGNMENT_CENTER
-		card_container.custom_minimum_size = Vector2(190, 0)  # 设置最小宽度以匹配卡牌
-		card_display_container.add_child(card_container)
-		
-		# 显示卡牌
-		var card_card = CARD_CARD_SCENE.instantiate()
-		card_container.add_child(card_card)
-		card_card.set_card_data(card_data)
-		
-		# 如果转换为碎片，显示提示标签
-		if is_converted:
-			var shard_label = Label.new()
-			shard_label.text = "已转化为 " + str(shard_value) + " 碎片"
-			shard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			shard_label.add_theme_font_size_override("font_size", 14)
-			shard_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.2, 1.0))  # 金色
-			shard_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			card_container.add_child(shard_label)
-		
-		# 添加延迟动画效果
-		card_card.modulate.a = 0.0
-		card_card.scale = Vector2(0.8, 0.8)
-		var tween = create_tween()
-		if i > 0:
-			tween.tween_interval(i * 0.1)
-		tween.parallel().tween_property(card_card, "modulate:a", 1.0, 0.3)
-		tween.parallel().tween_property(card_card, "scale", Vector2(1.0, 1.0), 0.3)
-		
-		# 如果有碎片标签，也添加淡入动画
-		if is_converted:
-			var shard_label = card_container.get_child(1)  # 碎片标签是第二个子节点
-			if shard_label:
-				shard_label.modulate.a = 0.0
-				var label_tween = create_tween()
-				if i > 0:
-					label_tween.tween_interval(i * 0.1 + 0.2)  # 稍微延迟显示
-				label_tween.tween_property(shard_label, "modulate:a", 1.0, 0.3)
+	print("CardPackUI: _spawn_cards 开始，opened_cards.size()=", opened_cards.size())
 	
-	# 更新状态标签
+	# 使用实际开出的卡牌数量
+	var card_count = opened_cards.size()
+	if card_count == 0:
+		print("CardPackUI: 警告！没有卡牌数据，使用默认数量5")
+		card_count = 5
+	var viewport_size = get_viewport().get_visible_rect().size
+	var center_x = viewport_size.x / 2
+	var center_y = viewport_size.y / 2 - 50  # 稍微上移
+	var radius = 280.0
+	var spread_angle = PI * 0.7  # 扇形角度（更大）
+	var card_width = 190.0
+	var card_height = 300.0
+	
+	for i in range(card_count):
+		# 创建卡牌背面（占位）
+		var card_back = Control.new()
+		card_back.custom_minimum_size = Vector2(card_width, card_height)
+		card_back.mouse_filter = Control.MOUSE_FILTER_STOP  # 确保可以接收鼠标事件
+		
+		# 计算扇形位置（从中心向两侧展开）
+		var t = i / float(card_count - 1)  # 0.0 到 1.0
+		var angle = (t - 0.5) * spread_angle - PI / 2  # 从上方开始，向两侧展开
+		var pos = Vector2(cos(angle), sin(angle)) * radius
+		
+		# 设置位置（以卡牌中心为基准）
+		card_back.position = Vector2(center_x, center_y) + pos - Vector2(card_width / 2, card_height / 2)
+		
+		# 添加轻微旋转，让扇形更自然
+		card_back.rotation = (t - 0.5) * 0.3  # 轻微旋转
+		
+		# 设置卡牌背面样式
+		var panel = Panel.new()
+		panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE  # 不拦截鼠标事件
+		var style = StyleBoxFlat.new()
+		style.bg_color = Color(0.2, 0.15, 0.1, 1.0)
+		style.border_color = Color(0.8, 0.6, 0.3, 1.0)
+		style.border_width_left = 3
+		style.border_width_top = 3
+		style.border_width_right = 3
+		style.border_width_bottom = 3
+		style.corner_radius_top_left = 12
+		style.corner_radius_top_right = 12
+		style.corner_radius_bottom_left = 12
+		style.corner_radius_bottom_right = 12
+		panel.add_theme_stylebox_override("panel", style)
+		card_back.add_child(panel)
+		
+		# 添加"卡牌背面"标签
+		var label = Label.new()
+		label.text = "?"
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE  # 不拦截鼠标事件
+		label.add_theme_font_size_override("font_size", 80)
+		label.add_theme_color_override("font_color", Color(0.6, 0.5, 0.4, 1.0))
+		card_back.add_child(label)
+		
+		card_display_area.add_child(card_back)
+		card_ui_nodes.append(card_back)
+		
+		# 飞出动画
+		card_back.modulate.a = 0.0
+		card_back.scale = Vector2(0.3, 0.3)
+		var tween = create_tween()
+		tween.tween_interval(i * 0.05)
+		tween.parallel().tween_property(card_back, "modulate:a", 1.0, 0.3)
+		tween.parallel().tween_property(card_back, "scale", Vector2(1.0, 1.0), 0.3)
+		
+		# 设置初始状态
+		card_back.set("is_flipped", false)
+		card_back.set("card_index", i)  # 保存索引
+		
+		# 添加悬停效果
+		card_back.mouse_entered.connect(func(): _on_card_hover(card_back))
+		card_back.mouse_exited.connect(func(): _on_card_unhover(card_back))
+		card_back.gui_input.connect(_on_card_click.bind(card_back, i))
+	
+	await get_tree().create_timer(0.5).timeout
+
+# 卡牌悬停
+func _on_card_hover(card: Control):
+	if card:
+		var is_flipped = card.get("is_flipped")
+		if is_flipped != true:
+			var tween = create_tween()
+			tween.tween_property(card, "scale", Vector2(1.15, 1.15), 0.2)
+			card.z_index = 10
+
+# 卡牌取消悬停
+func _on_card_unhover(card: Control):
+	if card:
+		var is_flipped = card.get("is_flipped")
+		if is_flipped != true:
+			var tween = create_tween()
+			tween.tween_property(card, "scale", Vector2(1.0, 1.0), 0.2)
+			card.z_index = 0
+
+# 卡牌点击（翻转）
+func _on_card_click(event: InputEvent, card: Control, index: int):
+	print("CardPackUI: 收到卡牌点击事件，index=", index, " event=", event)
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var is_flipped = card.get("is_flipped")
+		print("CardPackUI: is_flipped=", is_flipped, " opened_cards.size()=", opened_cards.size())
+		if is_flipped == true:
+			print("CardPackUI: 卡牌已翻转，忽略点击")
+			return
+		
+		if index >= opened_cards.size():
+			print("CardPackUI: 错误！索引超出范围: ", index, " >= ", opened_cards.size())
+			return
+		
+		print("CardPackUI: 点击卡牌 ", index, " 准备翻转，卡牌数据: ", opened_cards[index])
+		card.set("is_flipped", true)
+		_flip_card(card, index)
+	else:
+		print("CardPackUI: 不是左键点击事件")
+
+# 翻转卡牌
+func _flip_card(card_back: Control, index: int):
+	if index >= opened_cards.size():
+		print("CardPackUI: 卡牌索引超出范围 ", index, " >= ", opened_cards.size())
+		return
+	
+	var card_data = opened_cards[index]
+	var card_id = card_data.get("id", card_data.get("card_id", "unknown"))
+	print("CardPackUI: 翻转卡牌 ", index, " 数据ID: ", card_id, " 完整数据: ", card_data)
+	
+	# 保存位置和旋转
+	var saved_position = card_back.position
+	var saved_rotation = card_back.rotation
+	var saved_z_index = card_back.z_index
+	
+	# 翻转动画（水平缩放）
+	var tween = create_tween()
+	tween.tween_property(card_back, "scale:x", 0.0, 0.2)
+	await tween.finished
+	
+	# 替换为卡牌正面
+	card_back.queue_free()
+	card_ui_nodes[index] = null
+	
+	var card_face = CARD_CARD_SCENE.instantiate()
+	
+	# 先添加到场景树，确保节点已初始化
+	card_display_area.add_child(card_face)
+	
+	# 设置卡牌尺寸和位置（与背面一致）
+	card_face.custom_minimum_size = Vector2(190, 300)
+	# 使用锚点模式，但设置固定偏移量来限制尺寸
+	card_face.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	card_face.offset_left = 0
+	card_face.offset_top = 0
+	card_face.offset_right = 190
+	card_face.offset_bottom = 300
+	
+	card_face.position = saved_position
+	card_face.rotation = saved_rotation
+	card_face.z_index = saved_z_index
+	card_face.scale = Vector2(0.0, 1.0)
+	card_face.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	# 等待一帧，确保所有@onready变量都已初始化
+	await get_tree().process_frame
+	
+	# 现在设置卡牌数据（此时所有节点引用都已准备好）
+	card_face.set_card_data(card_data)
+	
+	card_ui_nodes[index] = card_face
+	
+	print("CardPackUI: 卡牌正面已创建，位置: ", saved_position, " 尺寸: ", card_face.size, " 卡牌名称: ", card_data.get("name", "unknown"))
+	
+	# 展开动画
+	tween = create_tween()
+	tween.tween_property(card_face, "scale:x", 1.0, 0.2)
+	
+	# 元素粒子爆发效果（根据卡牌属性）
+	var attributes = card_data.get("attributes", [])
+	if attributes.size() > 0:
+		_create_element_burst(card_face, attributes)
+
+# 元素粒子爆发
+func _create_element_burst(card: Control, attributes: Array):
+	if attributes.is_empty():
+		return
+	
+	# 根据第一个属性确定颜色
+	var color = Color(1.0, 0.5, 0.0)  # 默认火
+	match attributes[0]:
+		"water":
+			color = Color(0.0, 0.5, 1.0)
+		"wind":
+			color = Color(0.5, 0.8, 1.0)
+		"rock":
+			color = Color(0.75, 0.75, 0.75)
+	
+	# 创建简单的粒子效果（可以用更复杂的粒子系统替代）
+	for i in range(20):
+		var particle = ColorRect.new()
+		particle.custom_minimum_size = Vector2(4, 4)
+		particle.color = color
+		particle.position = card.position + Vector2(95, 150)
+		card_display_area.add_child(particle)
+		
+		var angle = (i / 20.0) * PI * 2
+		var distance = 100.0
+		var target_pos = particle.position + Vector2(cos(angle), sin(angle)) * distance
+		
+		var tween = create_tween()
+		tween.parallel().tween_property(particle, "position", target_pos, 0.5)
+		tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
+		tween.tween_callback(particle.queue_free)
+
+# 揭示卡牌（显示数据）
+func _reveal_cards(shards_gained: int):
+	# 卡牌已经在_spawn_cards中创建，这里只需要更新状态
+	open_another_button.visible = true
+	
 	if status_label:
 		var status_text = "已开出 " + str(opened_cards.size()) + " 张卡牌！"
 		if shards_gained > 0:
@@ -240,16 +462,33 @@ func _display_opened_cards(shards_gained: int = 0):
 
 # 清空卡牌显示
 func _clear_card_display():
-	if card_display_container:
-		for child in card_display_container.get_children():
+	if card_display_area:
+		for child in card_display_area.get_children():
 			child.queue_free()
+	card_ui_nodes.clear()
 
-# 再开一包
+# 再开一包按钮
+func _on_open_another_input(event: InputEvent):
+	print("CardPackUI: 收到OpenAnotherButton输入事件: ", event)
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		print("CardPackUI: 点击再开一包按钮")
+		_on_open_another_pressed()
+
+func _on_open_another_mouse_entered():
+	if open_another_button:
+		var tween = create_tween()
+		tween.tween_property(open_another_button, "scale", Vector2(1.1, 1.1), 0.2)
+
+func _on_open_another_mouse_exited():
+	if open_another_button:
+		var tween = create_tween()
+		tween.tween_property(open_another_button, "scale", Vector2(1.0, 1.0), 0.2)
+
 func _on_open_another_pressed():
 	opened_cards.clear()
 	_clear_card_display()
 	_update_gold_display()
-	_show_pack_card()
+	_show_pack_stage()
 	if status_label:
 		status_label.text = ""
 

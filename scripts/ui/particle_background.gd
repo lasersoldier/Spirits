@@ -21,6 +21,10 @@ class Particle:
 var particles: Array[Particle] = []
 var particle_count: int = 100
 
+# 迷雾层粒子
+var fog_particles: Array[Particle] = []
+var fog_particle_count: int = 30
+
 # 粒子颜色（对应 TSX 中的颜色）
 var colors: Array[Color] = [
 	Color(1.0, 0.5, 0.0, 0.6),  # Fire - rgba(255, 128, 0, 0.6)
@@ -29,12 +33,20 @@ var colors: Array[Color] = [
 	Color(1.0, 0.85, 0.2, 0.4)  # Gold Energy - rgba(255, 217, 51, 0.4)
 ]
 
+# 迷雾颜色（半透明蓝紫色）
+var fog_colors: Array[Color] = [
+	Color(0.2, 0.3, 0.5, 0.15),  # 深蓝紫
+	Color(0.3, 0.2, 0.4, 0.12),  # 紫蓝
+	Color(0.15, 0.25, 0.4, 0.18)  # 深蓝
+]
+
 func _ready():
 	# 确保在绘制时更新
 	set_process(true)
 	
 	# 初始化粒子
 	_initialize_particles()
+	_initialize_fog()
 
 func _initialize_particles():
 	particles.clear()
@@ -60,6 +72,31 @@ func _initialize_particles():
 		
 		particles.append(Particle.new(pos, vel, particle_size, color, max_life))
 
+func _initialize_fog():
+	fog_particles.clear()
+	await get_tree().process_frame
+	var canvas_size = size
+	if canvas_size.x == 0 or canvas_size.y == 0:
+		canvas_size = get_viewport().get_visible_rect().size
+	if canvas_size.x == 0 or canvas_size.y == 0:
+		canvas_size = Vector2(1920, 1080)
+	
+	for i in range(fog_particle_count):
+		var pos = Vector2(
+			randf() * canvas_size.x,
+			randf() * canvas_size.y
+		)
+		# 迷雾移动更缓慢，范围更大
+		var vel = Vector2(
+			(randf() - 0.5) * 0.15,  # 更慢的水平移动
+			(randf() - 0.5) * 0.1 - 0.05  # 轻微向上
+		)
+		var fog_size = randf() * 200.0 + 100.0  # 更大的尺寸
+		var color = fog_colors[randi() % fog_colors.size()]
+		var max_life = randf() * 500.0 + 300.0  # 更长的生命周期
+		
+		fog_particles.append(Particle.new(pos, vel, fog_size, color, max_life))
+
 func _process(_delta):
 	queue_redraw()
 
@@ -81,6 +118,33 @@ func _draw():
 		var radius = gradient_radius * (i / 20.0)
 		var alpha = 0.4 * (1.0 - i / 20.0)
 		draw_circle(center, radius, Color(0.08, 0.12, 0.24, alpha))
+	
+	# 更新并绘制迷雾层（在普通粒子之前绘制，作为背景）
+	for i in range(fog_particles.size()):
+		var p = fog_particles[i]
+		
+		# 更新位置
+		p.position += p.velocity
+		p.life += 1.0
+		
+		# 重置超出边界或生命结束的迷雾粒子
+		if p.life > p.max_life or p.position.x < -p.size or p.position.x > draw_size.x + p.size or p.position.y < -p.size or p.position.y > draw_size.y + p.size:
+			p.position = Vector2(
+				randf() * draw_size.x,
+				randf() * draw_size.y
+			)
+			p.velocity = Vector2(
+				(randf() - 0.5) * 0.15,
+				(randf() - 0.5) * 0.1 - 0.05
+			)
+			p.life = 0.0
+			p.max_life = randf() * 500.0 + 300.0
+			p.color = fog_colors[randi() % fog_colors.size()]
+			p.size = randf() * 200.0 + 100.0
+		
+		# 绘制迷雾（使用更大的圆形，带渐变透明度）
+		var alpha = p.color.a * (1.0 - p.life / p.max_life * 0.5)  # 生命周期影响透明度
+		draw_circle(p.position, p.size, Color(p.color.r, p.color.g, p.color.b, alpha))
 	
 	# 更新并绘制粒子
 	for i in range(particles.size()):
@@ -110,5 +174,6 @@ func _draw():
 
 func _notification(what):
 	if what == NOTIFICATION_RESIZED:
-		# 窗口大小改变时重新初始化粒子
+		# 窗口大小改变时重新初始化粒子和迷雾
 		_initialize_particles()
+		_initialize_fog()

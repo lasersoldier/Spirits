@@ -1,6 +1,19 @@
-[gd_scene load_steps=2 format=3 uid="uid://card_pack_ui"]
+[gd_scene load_steps=4 format=3 uid="uid://card_pack_ui"]
 
 [ext_resource type="Script" path="res://scripts/ui/card_pack_ui.gd" id="1_card_pack"]
+[ext_resource type="Script" path="res://scripts/ui/particle_background.gd" id="2_particle_bg"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1"]
+bg_color = Color(0.1, 0.1, 0.15, 0.3)
+border_color = Color(1, 0.65, 0, 0.4)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_left = 8
+corner_radius_bottom_right = 8
 
 [node name="CardPackUI" type="Control"]
 layout_mode = 3
@@ -10,6 +23,17 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_card_pack")
+
+[node name="ParticleBackground" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_particle_bg")
 
 [node name="TopBar" type="HBoxContainer" parent="."]
 unique_name_in_owner = true
@@ -40,6 +64,7 @@ size_flags_horizontal = 3
 text = ""
 horizontal_alignment = 1
 vertical_alignment = 1
+theme_override_colors/font_color = Color(1, 0.95, 0.8, 1)
 
 [node name="GoldLabel" type="Label" parent="TopBar"]
 unique_name_in_owner = true
@@ -49,6 +74,7 @@ text = "金币: 0"
 horizontal_alignment = 2
 vertical_alignment = 1
 theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
 
 [node name="ShardsLabel" type="Label" parent="TopBar"]
 unique_name_in_owner = true
@@ -58,73 +84,57 @@ text = "碎片: 0"
 horizontal_alignment = 2
 vertical_alignment = 1
 theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.4, 0.8, 1, 1)
 
-[node name="CenterContainer" type="VBoxContainer" parent="."]
+[node name="PackStage" type="Control" parent="."]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
-anchor_left = 0.0
-anchor_top = 0.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 offset_top = 72.0
-theme_override_constants/separation = 16
 
-[node name="TopSpacer" type="Control" parent="CenterContainer"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 48)
-
-[node name="PackStage" type="VBoxContainer" parent="CenterContainer"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 480)
-size_flags_vertical = 3
-alignment = 1
-theme_override_constants/separation = 12
-
-[node name="PackCardContainer" type="CenterContainer" parent="CenterContainer/PackStage"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_vertical = 1
-size_flags_horizontal = 3
-
-[node name="PackCard" type="Panel" parent="CenterContainer/PackStage/PackCardContainer"]
+[node name="PackIcon" type="Control" parent="PackStage"]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 15
-anchor_left = 0.0
-anchor_top = 0.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-custom_minimum_size = Vector2(380, 600)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -100.0
+offset_top = -150.0
+offset_right = 100.0
+offset_bottom = 150.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/PackStage/PackCardContainer/PackCard"]
+[node name="IconPanel" type="Panel" parent="PackStage/PackIcon"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-alignment = 1
+mouse_filter = 2
 
-[node name="Label" type="Label" parent="CenterContainer/PackStage/PackCardContainer/PackCard/VBoxContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "OPEN PACK"
+[node name="IconLabel" type="Label" parent="PackStage/PackIcon/IconPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 48
+text = "📦"
 horizontal_alignment = 1
 vertical_alignment = 1
-theme_override_font_sizes/font_size = 24
 
-[node name="SubtitleLabel" type="Label" parent="CenterContainer/PackStage/PackCardContainer/PackCard/VBoxContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Season of Flame"
-horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 12
-
-[node name="OpeningAnimation" type="Control" parent="CenterContainer/PackStage"]
+[node name="RuneContainer" type="Control" parent="PackStage"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 8
@@ -132,14 +142,15 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -128.0
-offset_top = -128.0
-offset_right = 128.0
-offset_bottom = 128.0
+offset_left = -120.0
+offset_top = -120.0
+offset_right = 120.0
+offset_bottom = 120.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 
-[node name="GlowRect" type="ColorRect" parent="CenterContainer/PackStage/OpeningAnimation"]
+[node name="OpeningAnimation" type="Control" parent="PackStage"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -147,9 +158,30 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(1, 1, 1, 0.5)
+mouse_filter = 2
 
-[node name="IconContainer" type="Control" parent="CenterContainer/PackStage/OpeningAnimation"]
+[node name="FlashRect" type="ColorRect" parent="PackStage/OpeningAnimation"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(1, 1, 1, 0.9)
+
+[node name="CardDisplayArea" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_top = 72.0
+mouse_filter = 0
+
+[node name="OpenAnotherButton" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 8
@@ -157,25 +189,34 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -32.0
-offset_top = -32.0
-offset_right = 32.0
-offset_bottom = 32.0
+offset_left = -80.0
+offset_top = 400.0
+offset_right = 80.0
+offset_bottom = 460.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 0
 
-[node name="CardDisplayContainer" type="GridContainer" parent="CenterContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_vertical = 3
-columns = 5
+[node name="ButtonPanel" type="Panel" parent="OpenAnotherButton"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_1")
 
-[node name="ButtonBar" type="HBoxContainer" parent="CenterContainer"]
-layout_mode = 2
-
-[node name="OpenAnotherButton" type="Button" parent="CenterContainer/ButtonBar"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-custom_minimum_size = Vector2(0, 48)
+[node name="ButtonLabel" type="Label" parent="OpenAnotherButton/ButtonPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.8, 1)
+theme_override_font_sizes/font_size = 18
 text = "再开一包"
+horizontal_alignment = 1
+vertical_alignment = 1

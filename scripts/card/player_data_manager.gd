@@ -35,10 +35,11 @@ func _load_data():
 	
 	# 加载玩家收藏
 	player_collection = {}
-	var collection_keys = config_file.get_section_keys("collection")
-	for key in collection_keys:
-		var count = config_file.get_value("collection", key, 0)
-		player_collection[key] = count
+	if config_file.has_section("collection"):
+		var collection_keys = config_file.get_section_keys("collection")
+		for key in collection_keys:
+			var count = config_file.get_value("collection", key, 0)
+			player_collection[key] = count
 	
 	# 加载玩家套牌
 	player_deck = []
@@ -59,7 +60,8 @@ func save_data():
 		config_file = ConfigFile.new()
 	
 	# 保存玩家收藏
-	config_file.erase_section("collection")
+	if config_file.has_section("collection"):
+		config_file.erase_section("collection")
 	for card_id in player_collection.keys():
 		config_file.set_value("collection", card_id, player_collection[card_id])
 	

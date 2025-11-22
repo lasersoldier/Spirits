@@ -51,20 +51,39 @@ text = "x0"
 [node name="AttrRow" type="HBoxContainer" parent="CardPanel/Content/VBox"]
 layout_mode = 2
 
-[node name="CardImage" type="TextureRect" parent="CardPanel/Content/VBox"]
-unique_name_in_owner = true
+[node name="CardImageContainer" type="Control" parent="CardPanel/Content/VBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 110)
+
+[node name="CardImage" type="TextureRect" parent="CardPanel/Content/VBox/CardImageContainer"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 stretch_mode = 5
 expand_mode = 1
+
+[node name="ImageMask" type="ColorRect" parent="CardPanel/Content/VBox/CardImageContainer/CardImage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0)
+mouse_filter = 2
 
 [node name="Description" type="RichTextLabel" parent="CardPanel/Content/VBox"]
 layout_mode = 2
 size_flags_vertical = 3
-bbcode_enabled = false
+bbcode_enabled = true
 scroll_active = false
 mouse_filter = 2
 autowrap_mode = 4
+theme_override_colors/default_color = Color(0.9, 0.9, 0.85, 1)
 
 [node name="RangeLabel" type="Label" parent="CardPanel/Content/VBox"]
 unique_name_in_owner = true

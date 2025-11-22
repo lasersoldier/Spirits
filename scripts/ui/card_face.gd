@@ -39,7 +39,7 @@ var disabled: bool = false
 @onready var name_label: Label = $CardPanel/Content/VBox/TopRow/NameLabel
 @onready var owned_label: Label = $CardPanel/Content/VBox/TopRow/OwnedLabel
 @onready var attr_container: HBoxContainer = $CardPanel/Content/VBox/AttrRow
-@onready var card_image: TextureRect = $CardPanel/Content/VBox/CardImage
+@onready var card_image: TextureRect = $CardPanel/Content/VBox/CardImageContainer/CardImage
 @onready var desc_label: RichTextLabel = $CardPanel/Content/VBox/Description
 @onready var range_label: Label = $CardPanel/Content/VBox/RangeLabel
 @onready var rarity_label: Label = $CardPanel/Content/VBox/BottomRow/RarityLabel
@@ -72,8 +72,10 @@ func set_card(card_obj: Card):
 	_refresh()
 
 func set_card_data(data: Dictionary):
+	print("CardFace: set_card_data 被调用，数据: ", data)
 	card = Card.new(data)
 	card_id = card.card_id
+	print("CardFace: 卡牌创建完成，card_id=", card_id, " card_name=", card.card_name, " energy_cost=", card.energy_cost)
 	_refresh()
 
 func set_owned_count(count: int):
@@ -94,7 +96,7 @@ func _configure_description_label():
 	if not desc_label:
 		return
 	desc_label.fit_content = false
-	desc_label.bbcode_enabled = false
+	desc_label.bbcode_enabled = true  # 启用BBCode以支持关键词高亮
 	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -113,20 +115,57 @@ func _refresh():
 	set_owned_count(owned_count)
 
 func _update_basic_info():
+	print("CardFace: _update_basic_info 开始，name_label=", name_label, " desc_label=", desc_label, " cost_label=", cost_label)
 	if name_label:
 		name_label.text = card.card_name
+		print("CardFace: 设置名称: ", card.card_name)
+	else:
+		print("CardFace: 警告！name_label 为 null")
 	if desc_label:
-		# 使用简称描述
+		# 使用简称描述，并解析关键词
 		var text := card.get_short_description()
 		if text.is_empty():
 			text = card.card_id
+		# 解析关键词并添加颜色标记
+		text = _parse_keywords(text)
 		desc_label.text = text
+		print("CardFace: 设置描述: ", text)
+	else:
+		print("CardFace: 警告！desc_label 为 null")
 	if cost_label:
-		cost_label.text = "能量: " + str(card.energy_cost)
+		cost_label.text = "能量: " + str(int(card.energy_cost))  # 转换为整数显示
+		print("CardFace: 设置能量: ", card.energy_cost)
+	else:
+		print("CardFace: 警告！cost_label 为 null")
 	if rarity_label:
 		var rarity: String = card.rarity if card.rarity != "" else "common"
 		var rarity_info: Dictionary = RARITY_STYLES.get(rarity, {})
 		rarity_label.text = rarity_info.get("label", rarity.capitalize())
+		print("CardFace: 设置稀有度: ", rarity_label.text)
+	else:
+		print("CardFace: 警告！rarity_label 为 null")
+
+# 解析关键词并添加BBCode颜色标记
+func _parse_keywords(text: String) -> String:
+	var keywords = {
+		"攻击": "[color=#ff6b6b]攻击[/color]",
+		"防御": "[color=#4ecdc4]防御[/color]",
+		"治疗": "[color=#95e1d3]治疗[/color]",
+		"移动": "[color=#ffe66d]移动[/color]",
+		"火": "[color=#ff6b6b]火[/color]",
+		"水": "[color=#4a90e2]水[/color]",
+		"风": "[color=#95e1d3]风[/color]",
+		"岩": "[color=#d4a574]岩[/color]",
+		"能量": "[color=#ffe66d]能量[/color]",
+		"伤害": "[color=#ff6b6b]伤害[/color]",
+		"范围": "[color=#4ecdc4]范围[/color]"
+	}
+	
+	var result = text
+	for keyword in keywords.keys():
+		result = result.replace(keyword, keywords[keyword])
+	
+	return result
 
 func _update_attributes():
 	if not attr_container:
@@ -145,6 +184,11 @@ func _update_card_image():
 	# 预留图片加载逻辑，暂时显示占位符
 	# 未来可以从资源路径加载：res://art/cards/{card_id}.png
 	card_image.texture = null  # 暂时为空，等待图片资源
+	
+	# 设置插画的圆角遮罩（通过Shader或StyleBox实现）
+	# 这里使用StyleBoxFlat作为背景，实现圆角效果
+	if card_image:
+		card_image.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 
 func _update_range_display():
 	if not range_label or not card:
@@ -177,18 +221,46 @@ func _update_panel_style():
 	if not card_panel:
 		return
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.15, 0.15, 0.18, 0.95)
+	
+	# 根据稀有度设置背景和边框
+	var rarity: String = card.rarity if card.rarity != "" else "common"
+	var rarity_info: Dictionary = RARITY_STYLES.get(rarity, {})
+	
+	# 背景颜色根据稀有度变化
+	match rarity:
+		"common":
+			style.bg_color = Color(0.15, 0.15, 0.18, 0.95)
+		"rare":
+			style.bg_color = Color(0.18, 0.16, 0.12, 0.95)
+		"epic":
+			style.bg_color = Color(0.18, 0.12, 0.20, 0.95)
+		"legendary":
+			style.bg_color = Color(0.20, 0.15, 0.10, 0.95)
+		_:
+			style.bg_color = Color(0.15, 0.15, 0.18, 0.95)
+	
 	style.corner_radius_top_left = 12
 	style.corner_radius_top_right = 12
 	style.corner_radius_bottom_left = 12
 	style.corner_radius_bottom_right = 12
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	var rarity: String = card.rarity if card.rarity != "" else "common"
-	var rarity_info: Dictionary = RARITY_STYLES.get(rarity, {})
+	
+	# 边框宽度根据稀有度增加
+	var border_width = 2
+	if rarity == "rare":
+		border_width = 3
+	elif rarity == "epic":
+		border_width = 4
+	elif rarity == "legendary":
+		border_width = 5
+	
+	style.border_width_left = border_width
+	style.border_width_top = border_width
+	style.border_width_right = border_width
+	style.border_width_bottom = border_width
+	
+	# 边框颜色
 	style.border_color = rarity_info.get("border", Color(0.4, 0.4, 0.5))
+	
 	card_panel.add_theme_stylebox_override("panel", style)
 
 func _on_gui_input(event: InputEvent):
