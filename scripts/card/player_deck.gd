@@ -71,7 +71,8 @@ func add_card(card_id: String, count: int = 1) -> Dictionary:
 	if not found:
 		deck.append({"card_id": card_id, "count": new_deck_count})
 	
-	_save_to_data_manager()
+	# 不再自动保存，由UI层控制
+	# _save_to_data_manager()
 	return {"success": true, "message": "添加成功"}
 
 # 从套牌移除卡牌
@@ -92,7 +93,8 @@ func remove_card(card_id: String, count: int = 1) -> Dictionary:
 				entry["count"] = new_count
 			break
 	
-	_save_to_data_manager()
+	# 不再自动保存，由UI层控制
+	# _save_to_data_manager()
 	return {"success": true, "message": "移除成功"}
 
 # 设置套牌中某张卡的数量
@@ -137,7 +139,8 @@ func set_card_count(card_id: String, count: int) -> Dictionary:
 		if not found:
 			deck.append({"card_id": card_id, "count": count})
 	
-	_save_to_data_manager()
+	# 不再自动保存，由UI层控制
+	# _save_to_data_manager()
 	return {"success": true, "message": "设置成功"}
 
 # 验证套牌合法性
@@ -168,14 +171,19 @@ func validate_deck() -> Dictionary:
 # 清空套牌
 func clear_deck():
 	deck.clear()
-	_save_to_data_manager()
+	# 不再自动保存，由UI层控制
+	# _save_to_data_manager()
 
 # 获取套牌数据（用于构建实际卡组）
 func get_deck_data() -> Array[Dictionary]:
 	return deck.duplicate()
 
-# 保存到数据管理器
-func _save_to_data_manager():
+# 保存到数据管理器（公开方法，供UI层调用）
+func save_to_data_manager():
 	data_manager.set_deck(deck)
 	data_manager.save_data()
+
+# 私有方法（保留向后兼容）
+func _save_to_data_manager():
+	save_to_data_manager()
 

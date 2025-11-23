@@ -242,9 +242,9 @@ func _spawn_cards() -> void:
 		card_count = 5
 	var viewport_size = get_viewport().get_visible_rect().size
 	var center_x = viewport_size.x / 2
-	var center_y = viewport_size.y / 2 - 50  # 稍微上移
-	var radius = 280.0
-	var spread_angle = PI * 0.7  # 扇形角度（更大）
+	var center_y = viewport_size.y / 2 + 80  # 向下移动，避免与碎片信息重叠
+	var radius = 400.0  # 增加半径，让卡牌更分散
+	var spread_angle = PI * 1.2  # 增加扇形角度，让卡牌更分散
 	var card_width = 190.0
 	var card_height = 300.0
 	
@@ -255,7 +255,7 @@ func _spawn_cards() -> void:
 		card_back.mouse_filter = Control.MOUSE_FILTER_STOP  # 确保可以接收鼠标事件
 		
 		# 计算扇形位置（从中心向两侧展开）
-		var t = i / float(card_count - 1)  # 0.0 到 1.0
+		var t = i / float(max(1, card_count - 1))  # 0.0 到 1.0，避免除零
 		var angle = (t - 0.5) * spread_angle - PI / 2  # 从上方开始，向两侧展开
 		var pos = Vector2(cos(angle), sin(angle)) * radius
 		
@@ -263,7 +263,7 @@ func _spawn_cards() -> void:
 		card_back.position = Vector2(center_x, center_y) + pos - Vector2(card_width / 2, card_height / 2)
 		
 		# 添加轻微旋转，让扇形更自然
-		card_back.rotation = (t - 0.5) * 0.3  # 轻微旋转
+		card_back.rotation = (t - 0.5) * 0.25  # 轻微旋转
 		
 		# 设置卡牌背面样式
 		var panel = Panel.new()
@@ -309,30 +309,43 @@ func _spawn_cards() -> void:
 		card_back.set("is_flipped", false)
 		card_back.set("card_index", i)  # 保存索引
 		
-		# 添加悬停效果
-		card_back.mouse_entered.connect(func(): _on_card_hover(card_back))
-		card_back.mouse_exited.connect(func(): _on_card_unhover(card_back))
+		# 连接点击事件（未翻转的卡牌背面只需要点击翻转，不需要悬停效果）
 		card_back.gui_input.connect(_on_card_click.bind(card_back, i))
 	
 	await get_tree().create_timer(0.5).timeout
 
-# 卡牌悬停
-func _on_card_hover(card: Control):
-	if card:
-		var is_flipped = card.get("is_flipped")
-		if is_flipped != true:
-			var tween = create_tween()
-			tween.tween_property(card, "scale", Vector2(1.15, 1.15), 0.2)
-			card.z_index = 10
+# 连接卡牌悬停事件（用于翻转后的卡牌）
+func _connect_card_hover_events(card_face: Control):
+	if not is_instance_valid(card_face):
+		return
+	
+	# 确保 CardFace 能接收鼠标事件
+	card_face.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	# 等待一帧，确保 CardFace 完全初始化
+	await get_tree().process_frame
+	
+	# 确保 CardFace 的子节点不拦截鼠标事件（让事件传递到 CardFace）
+	# 这样 CardFace 的 mouse_entered/mouse_exited 才能正常工作，从而显示预览
+	_set_card_face_children_mouse_filter(card_face, Control.MOUSE_FILTER_IGNORE)
+	
+	print("CardPackUI: 已为翻转后的卡牌启用预览功能，mouse_filter=", card_face.mouse_filter)
 
-# 卡牌取消悬停
-func _on_card_unhover(card: Control):
-	if card:
-		var is_flipped = card.get("is_flipped")
-		if is_flipped != true:
-			var tween = create_tween()
-			tween.tween_property(card, "scale", Vector2(1.0, 1.0), 0.2)
-			card.z_index = 0
+# 递归设置 CardFace 子节点的 mouse_filter
+func _set_card_face_children_mouse_filter(node: Node, filter_mode: int):
+	if node is Control:
+		# 检查是否是 CardFace 本身（通过脚本路径检查）
+		if node.get_script():
+			var script_path = node.get_script().resource_path
+			if script_path and "card_face.gd" in script_path:
+				# 这是 CardFace，保持 STOP，不处理子节点
+				return
+		
+		# 子节点设置为 IGNORE，让事件传递到 CardFace
+		node.mouse_filter = filter_mode
+	
+	for child in node.get_children():
+		_set_card_face_children_mouse_filter(child, filter_mode)
 
 # 卡牌点击（翻转）
 func _on_card_click(event: InputEvent, card: Control, index: int):
@@ -408,9 +421,17 @@ func _flip_card(card_back: Control, index: int):
 	
 	print("CardPackUI: 卡牌正面已创建，位置: ", saved_position, " 尺寸: ", card_face.size, " 卡牌名称: ", card_data.get("name", "unknown"))
 	
+	# 为翻转后的卡牌连接悬停事件（延迟执行，确保 CardFace 已完全初始化）
+	call_deferred("_connect_card_hover_events", card_face)
+	
 	# 展开动画
 	tween = create_tween()
 	tween.tween_property(card_face, "scale:x", 1.0, 0.2)
+	await tween.finished
+	# 动画完成后，确保 scale 完全恢复为 (1.0, 1.0)
+	card_face.scale = Vector2(1.0, 1.0)
+	# 设置缩放中心点
+	card_face.pivot_offset = card_face.size / 2.0
 	
 	# 元素粒子爆发效果（根据卡牌属性）
 	var attributes = card_data.get("attributes", [])

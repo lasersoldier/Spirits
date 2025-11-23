@@ -1,0 +1,101 @@
+[gd_scene load_steps=2 format=3 uid="uid://deck_card_strip"]
+
+[ext_resource type="Script" path="res://scripts/ui/deck_card_strip.gd" id="1_deck_strip"]
+
+[node name="DeckCardStrip" type="Control"]
+custom_minimum_size = Vector2(280, 50)
+layout_mode = 3
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 50.0
+grow_horizontal = 2
+size_flags_horizontal = 3
+script = ExtResource("1_deck_strip")
+
+[node name="BackgroundPanel" type="Panel" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ArtTexture" type="TextureRect" parent="BackgroundPanel"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+stretch_mode = 6
+expand_mode = 1
+clip_contents = true
+
+[node name="HBox" type="HBoxContainer" parent="BackgroundPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10
+
+[node name="SpacerLeft" type="Control" parent="BackgroundPanel/HBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(5, 0)
+mouse_filter = 2
+
+[node name="CostContainer" type="Control" parent="BackgroundPanel/HBox"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(30, 30)
+size_flags_vertical = 4
+mouse_filter = 2
+
+[node name="CostBackground" type="ColorRect" parent="BackgroundPanel/HBox/CostContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.2, 0.3, 0.5, 0.8)
+
+[node name="CostLabel" type="Label" parent="BackgroundPanel/HBox/CostContainer"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "0"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 16
+
+[node name="NameLabel" type="Label" parent="BackgroundPanel/HBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Card Name"
+vertical_alignment = 1
+text_overrun_behavior = 3
+
+[node name="CountLabel" type="Label" parent="BackgroundPanel/HBox"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(40, 0)
+text = "x1"
+horizontal_alignment = 2
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 14
+
+[node name="SpacerRight" type="Control" parent="BackgroundPanel/HBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(10, 0)
+mouse_filter = 2

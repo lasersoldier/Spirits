@@ -3,6 +3,7 @@ shader_type canvas_item;
 // 磨砂玻璃效果 Shader
 // 使用屏幕纹理实现背景模糊和半透明效果
 
+uniform sampler2D SCREEN_TEXTURE : hint_screen_texture, filter_linear_mipmap;
 uniform float blur_amount : hint_range(0.0, 10.0) = 2.0;
 uniform vec4 tint_color : source_color = vec4(1.0, 1.0, 1.0, 0.3);
 uniform float brightness : hint_range(0.0, 2.0) = 1.0;

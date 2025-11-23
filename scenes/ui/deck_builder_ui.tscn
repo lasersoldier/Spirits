@@ -1,6 +1,15 @@
-[gd_scene load_steps=2 format=3 uid="uid://deck_builder_ui"]
+[gd_scene load_steps=6 format=3 uid="uid://deck_builder_ui"]
 
 [ext_resource type="Script" path="res://scripts/ui/deck_builder_ui.gd" id="1_deck_builder"]
+[ext_resource type="Script" path="res://scripts/ui/particle_background.gd" id="2_particle_bg"]
+[ext_resource type="Shader" path="res://resources/shaders/glass.gdshader" id="3_glass_shader"]
+[ext_resource type="PackedScene" uid="uid://mana_curve" path="res://scenes/ui/mana_curve.tscn" id="4_mana_curve"]
+
+[sub_resource type="Environment" id="Environment_1"]
+glow_enabled = true
+glow_blend_mode = 1
+glow_bloom = 0.5
+glow_strength = 1.2
 
 [node name="DeckBuilderUI" type="Control"]
 layout_mode = 3
@@ -11,42 +20,72 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_deck_builder")
 
-[node name="TopBar" type="HBoxContainer" parent="."]
+[node name="ParticleBackground" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_particle_bg")
+
+[node name="Vignette" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.4)
+
+[node name="ContentLayer" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TopBar" type="HBoxContainer" parent="ContentLayer"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
 anchor_left = 0.0
 anchor_right = 1.0
-offset_left = 0.0
-offset_top = 0.0
-offset_right = 0.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
 offset_bottom = 72.0
 grow_horizontal = 2
 theme_override_constants/separation = 16
 
-[node name="BackButton" type="Button" parent="TopBar"]
+[node name="BackButton" type="Button" parent="ContentLayer/TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(140, 44)
 text = "返回主菜单"
 
-[node name="TitleLabel" type="Label" parent="TopBar"]
+[node name="TitleLabel" type="Label" parent="ContentLayer/TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Spirit Deck"
+text = "灵能星盘"
 vertical_alignment = 1
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.95, 0.9, 0.8, 1)
 
-[node name="DeckCountLabel" type="Label" parent="TopBar"]
+[node name="DeckCountLabel" type="Label" parent="ContentLayer/TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
 text = "0/36"
 horizontal_alignment = 1
 vertical_alignment = 1
+theme_override_font_sizes/font_size = 18
 
-[node name="ShardsLabel" type="Label" parent="TopBar"]
+[node name="ShardsLabel" type="Label" parent="ContentLayer/TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
@@ -55,33 +94,50 @@ horizontal_alignment = 2
 vertical_alignment = 1
 theme_override_font_sizes/font_size = 16
 
-[node name="SaveButton" type="Button" parent="TopBar"]
+[node name="SaveButton" type="Button" parent="ContentLayer/TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
 custom_minimum_size = Vector2(120, 44)
 text = "保存"
 
-[node name="MainContainer" type="HSplitContainer" parent="."]
+[node name="MainContainer" type="HBoxContainer" parent="ContentLayer"]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-offset_top = 72.0
-split_offset = 1200
+offset_left = 20.0
+offset_top = 92.0
+offset_right = -20.0
+offset_bottom = -20.0
+theme_override_constants/separation = 20
 
-[node name="LeftPanel" type="VBoxContainer" parent="MainContainer"]
+[node name="LeftPanel" type="PanelContainer" parent="ContentLayer/MainContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+size_flags_stretch_ratio = 0.75
 
-[node name="FilterContainer" type="HBoxContainer" parent="MainContainer/LeftPanel"]
+[node name="LeftContent" type="VBoxContainer" parent="ContentLayer/MainContainer/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 15
+
+[node name="FilterContainer" type="HBoxContainer" parent="ContentLayer/MainContainer/LeftPanel/LeftContent"]
 unique_name_in_owner = true
 layout_mode = 2
+custom_minimum_size = Vector2(0, 60)
+theme_override_constants/separation = 12
+alignment = 1
 
-[node name="CollectionScroll" type="ScrollContainer" parent="MainContainer/LeftPanel"]
+[node name="HSeparator" type="HSeparator" parent="ContentLayer/MainContainer/LeftPanel/LeftContent"]
+layout_mode = 2
+
+[node name="CollectionScroll" type="ScrollContainer" parent="ContentLayer/MainContainer/LeftPanel/LeftContent"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
@@ -89,48 +145,110 @@ size_flags_horizontal = 3
 scroll_vertical = true
 scroll_horizontal = false
 
-[node name="CollectionGrid" type="GridContainer" parent="MainContainer/LeftPanel/CollectionScroll"]
+[node name="CollectionGrid" type="GridContainer" parent="ContentLayer/MainContainer/LeftPanel/LeftContent/CollectionScroll"]
 unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+columns = 7
+theme_override_constants/h_separation = 15
+theme_override_constants/v_separation = 15
+
+[node name="RightPanel" type="Panel" parent="ContentLayer/MainContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+size_flags_stretch_ratio = 0.25
+
+[node name="RightContent" type="VBoxContainer" parent="ContentLayer/MainContainer/RightPanel"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-columns = 4
+offset_left = 15.0
+offset_top = 15.0
+offset_right = -15.0
+offset_bottom = -15.0
+theme_override_constants/separation = 12
 
-[node name="RightPanel" type="VBoxContainer" parent="MainContainer"]
+[node name="TitleLabel" type="Label" parent="ContentLayer/MainContainer/RightPanel/RightContent"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "充能核心"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.9, 0.85, 0.7, 1)
+
+[node name="ManaCurveWrapper" type="HBoxContainer" parent="ContentLayer/MainContainer/RightPanel/RightContent"]
+layout_mode = 2
+alignment = 1
+
+[node name="ManaCurveSpacerLeft" type="Control" parent="ContentLayer/MainContainer/RightPanel/RightContent/ManaCurveWrapper"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ManaCurve" parent="ContentLayer/MainContainer/RightPanel/RightContent/ManaCurveWrapper" instance=ExtResource("4_mana_curve")]
+layout_mode = 2
+size_flags_horizontal = 0
+custom_minimum_size = Vector2(282, 120)
+
+[node name="ManaCurveSpacerRight" type="Control" parent="ContentLayer/MainContainer/RightPanel/RightContent/ManaCurveWrapper"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DeckScroll" type="ScrollContainer" parent="ContentLayer/MainContainer/RightPanel/RightContent"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+size_flags_horizontal = 3
+scroll_vertical = true
+scroll_horizontal = false
+clip_contents = true
+
+[node name="DeckListWrapper" type="HBoxContainer" parent="ContentLayer/MainContainer/RightPanel/RightContent/DeckScroll"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+alignment = 1
 
-[node name="TitleLabel" type="Label" parent="MainContainer/RightPanel"]
+[node name="SpacerLeft" type="Control" parent="ContentLayer/MainContainer/RightPanel/RightContent/DeckScroll/DeckListWrapper"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DeckList" type="VBoxContainer" parent="ContentLayer/MainContainer/RightPanel/RightContent/DeckScroll/DeckListWrapper"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Current Loadout"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="DeckList" type="ItemList" parent="MainContainer/RightPanel"]
-unique_name_in_owner = true
-layout_mode = 2
+size_flags_horizontal = 0
 size_flags_vertical = 3
+custom_minimum_size = Vector2(280, 0)
+theme_override_constants/separation = 4
 
-[node name="DeckButtonBar" type="HBoxContainer" parent="MainContainer/RightPanel"]
+[node name="SpacerRight" type="Control" parent="ContentLayer/MainContainer/RightPanel/RightContent/DeckScroll/DeckListWrapper"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DeckButtonBar" type="HBoxContainer" parent="ContentLayer/MainContainer/RightPanel/RightContent"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="RemoveCardButton" type="Button" parent="MainContainer/RightPanel/DeckButtonBar"]
+[node name="RemoveCardButton" type="Button" parent="ContentLayer/MainContainer/RightPanel/RightContent/DeckButtonBar"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 custom_minimum_size = Vector2(0, 44)
 text = "移除选中"
 
-[node name="ClearDeckButton" type="Button" parent="MainContainer/RightPanel/DeckButtonBar"]
+[node name="ClearDeckButton" type="Button" parent="ContentLayer/MainContainer/RightPanel/RightContent/DeckButtonBar"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 custom_minimum_size = Vector2(0, 44)
 text = "清空套牌"
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
